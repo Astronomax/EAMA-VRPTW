@@ -19,6 +19,8 @@ def check_route(problem, line):
         customer = list(filter(lambda x: x.number == int(c), problem.customers))[0]
         customers.append(customer)
         customer.is_serviced = True
+        if not (customer.e <= float(t) < customer.l):
+            print(customer.e, float(t), customer.l)
         assert customer.e <= float(t) < customer.l, f"Time violation for customer {c}"
     assert sum([x.demand for x in customers]) <= problem.vehicle_capacity, f"Capacity violation for line {line}"
 

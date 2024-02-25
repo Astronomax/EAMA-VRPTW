@@ -5,6 +5,7 @@ from operator import add, sub
 from eama.structure import Customer, Route, Problem, Solution
 import math
 import copy
+import time
 
 
 class ExchangeType(Enum):
@@ -15,11 +16,20 @@ class ExchangeType(Enum):
 
 class Exchange:
     def __init__(self, v_route, v_pos, w_route, w_pos, operator):
-      self.v_route = v_route
-      self.v_pos = v_pos
-      self.w_route = w_route
-      self.w_pos = w_pos
-      self.operator = operator
+        self.v_route = v_route
+        self.v_pos = v_pos
+        self.w_route = w_route
+        self.w_pos = w_pos
+        self.operator = operator
+
+
+class InsertionEjection:
+    def __init__(self, route, v, insertion, ejection, meta):
+        self.route = route
+        self.v = v
+        self.insertion = insertion
+        self.ejection = ejection
+        self.meta = meta
 
 
 def apply_exchange(e: Exchange):
@@ -239,45 +249,46 @@ class EAMA:
         # remove (v^-, v) and (w, w^+), and add (w, v) and (v^-, w^+)
         lambda v_route, v_pos, w_route, w_pos:                                      \
             Exchange(v_route, v_pos - 1, w_route, w_pos, ExchangeType.TwoOpt),
-            #v_route.two_opt_penalty_delta(v_pos - 1, w_route, w_pos)),
         # remove (v, v^+) and (w^-, w), and add (v, w) and (w^-, v^+)
         lambda v_route, v_pos, w_route, w_pos:                                      \
             Exchange(v_route, v_pos, w_route, w_pos - 1, ExchangeType.TwoOpt),
-            #v_route.two_opt_penalty_delta(v_pos, w_route, w_pos - 1)),
         # insert v between w^- and w, and link v^- and v^+
         lambda v_route, v_pos, w_route, w_pos:                                      \
             Exchange(v_route, v_pos, w_route, w_pos, ExchangeType.OutRelocate),
-            #v_route.out_relocate_penalty_delta(v_pos, w_route, w_pos)),
         # insert v between w and w^+, and link v^- and v^+
         lambda v_route, v_pos, w_route, w_pos:                                      \
             Exchange(v_route, v_pos, w_route, w_pos + 1, ExchangeType.OutRelocate),
-            #v_route.out_relocate_penalty_delta(v_pos, w_route, w_pos + 1)),
         # insert v between (w^-)^- and w, and insert w^- between v^- and v^+
         lambda v_route, v_pos, w_route, w_pos:                                      \
             Exchange(v_route, v_pos, w_route, w_pos - 1, ExchangeType.Exchange),
-            #v_route.exchange_penalty_delta(v_pos, w_route, w_pos - 1)),
         # insert v between w and (w^+)^+, and insert w^+ between v^- and v^+
         lambda v_route, v_pos, w_route, w_pos:                                      \
             Exchange(v_route, v_pos, w_route, w_pos + 1, ExchangeType.Exchange),
-            #v_route.exchange_penalty_delta(v_pos, w_route, w_pos + 1)),
     ]
 
-    def __init__(self, problem: Problem, obj_func=None, n_near=100, debug=False):
+    def __init__(self, problem: Problem, obj_func=None, n_near=100, debug=False, k_max=5, t_max=600):
         self.problem = problem
         if not obj_func:
             obj_func = self.problem.obj_func
         self.obj_func = obj_func
         self.n_near = n_near
         self.debug = debug
+        self.k_max = k_max
+        self.p = [0] * (len(self.problem.customers) + 1)
+        self.t_max = t_max
 
     # determine the minimum possible number of routes
     def powerful_route_minimization_heuristic(self):
+        m = 0
+        routes = []
         customers = []
         '''
         distance_tresholds = []
         '''
         # prepare some useful data
         def prepare():
+            nonlocal m
+            nonlocal routes
             nonlocal customers
             '''
             nonlocal distance_tresholds
@@ -286,6 +297,12 @@ class EAMA:
             customers = self.problem.customers
             is_not_depo = lambda x: x.number != self.problem.depot.number
             customers = list(filter(is_not_depo, customers))
+
+            m = len(customers)
+            routes = [PenaltyCalculator() for _ in range(m)]
+            for i, route in enumerate(routes):
+                route.recalc(Route(self.problem, [customers[i]]))
+
             '''
             # list of distances to n_near-nearest customers
             distance_tresholds = [0] * len(customers)
@@ -299,7 +316,10 @@ class EAMA:
                 distance_tresholds[i] = distance(nth_nearest)
             '''
 
-        def delete_route(routes):
+        def delete_route():
+            nonlocal routes
+            start_time = time.time()
+
             m = len(routes)
             ejection_pool = []
 
@@ -312,12 +332,36 @@ class EAMA:
             eliminate_random_route()
             # trying to empty ejection_pool
             while len(ejection_pool) > 0:
+                assert len(set([cust.number for cust in ejection_pool] + [customer.number for route in routes for customer in route.route._customers])) \
+                    == len(self.problem.customers)
+                if len(ejection_pool) + sum([len(route.route._customers) - 2 for route in routes]) \
+                         != len(self.problem.customers) - 1:
+                    print(len(ejection_pool) + sum([len(route.route._customers) - 2 for route in routes]), len(self.problem.customers) - 1)
+                assert len(ejection_pool) + sum([len(route.route._customers) - 2 for route in routes]) \
+                    == len(self.problem.customers) - 1
+                
+                if self.debug:
+                    print(f'ejection_pool: {len(ejection_pool)}')
                 # remove v from EP with the LIFO strategy
                 v = ejection_pool.pop(len(ejection_pool) - 1)
 
+                assert len(ejection_pool) + 1 + sum([len(route.route._customers) - 2 for route in routes]) \
+                    == len(self.problem.customers) - 1
+                assert len(set([cust.number for cust in ejection_pool] + [v.number] + [customer.number for route in routes for customer in route.route._customers])) \
+                        == len(self.problem.customers)
+
                 def try_to_insert_somewhere():
                     nonlocal routes
+
+                    assert sum([sum(route.get_penalty()) for route in routes]) == 0
+                    assert len(ejection_pool) + 1 + sum([len(route.route._customers) - 2 for route in routes]) \
+                         == len(self.problem.customers) - 1
+
                     random.shuffle(routes)
+
+                    assert len(set([cust.number for cust in ejection_pool] + [v.number] + [customer.number for route in routes for customer in route.route._customers])) \
+                        == len(self.problem.customers)               
+                    
                     for route in routes:
                         positions = list(range(1, len(route.route._customers)))
                         random.shuffle(positions)
@@ -327,13 +371,21 @@ class EAMA:
                             route.route._customers.insert(position, v)
                             route.recalc(route.route)
                             if route.is_feasible():
+                                assert len(set([cust.number for cust in ejection_pool] + [customer.number for route in routes for customer in route.route._customers])) \
+                                    == len(self.problem.customers)  
                                 return True
                             route.route._customers.pop(position)
                             route.recalc(route.route)
+                    assert len(set([cust.number for cust in ejection_pool] + [v.number] + [customer.number for route in routes for customer in route.route._customers])) \
+                        == len(self.problem.customers)
                     return False
 
                 def squeeze():
+                    nonlocal start_time
                     nonlocal routes
+
+                    routes_initial = copy.deepcopy(routes)
+
                     # insert such that penalty is minimum
                     insertions =                                            \
                         [(route, pos)                                       \
@@ -358,6 +410,13 @@ class EAMA:
 
                     split_by_feasibility()
                     while len(infeasible) > 0:
+                        penalty_sum = sum([sum(route.get_penalty()) for route in infeasible])
+                        print(f'penalty_sum: {penalty_sum}')
+                        
+                        if time.time() - start_time > self.t_max:
+                            routes = routes_initial
+                            return False
+
                         v_route = infeasible.pop(random.randint(0, len(infeasible) - 1))
                         opt_exchange = None
                         opt_exchange_delta = math.inf
@@ -365,6 +424,7 @@ class EAMA:
                             for i, w_route in enumerate(routes):
                                 for w_pos in range(0, len(w_route.route._customers)):
                                     for j, exchange_gen_f in enumerate(self.exchanges):
+                                        '''
                                         if self.debug:
                                                 print(
                                                     (f'ejection_pool: {len(ejection_pool)},\n'
@@ -374,6 +434,7 @@ class EAMA:
                                                     f'w_pos: {w_pos}/{len(w_route.route._customers)},\n'
                                                     f'exchange: {j}/{len(self.exchanges)}\n')
                                                 )
+                                        '''
                                         e = exchange_gen_f(v_route, v_pos, w_route, w_pos)
                                         if not exchange_appliable(e):
                                             continue
@@ -381,7 +442,10 @@ class EAMA:
                                         if p_c_delta + p_tw_delta < opt_exchange_delta: # alpha = beta = 1
                                             opt_exchange_delta = p_c_delta + p_tw_delta # alpha = beta = 1
                                             opt_exchange = e
-                        if opt_exchange_delta >= 0:
+                        print(f'delta: {opt_exchange_delta}')
+                        if opt_exchange_delta > -1e-5:
+                            # return to initial state
+                            routes = routes_initial
                             return False
                         else:
                             # apply optimal exchange
@@ -389,6 +453,10 @@ class EAMA:
                                 == len(self.problem.customers) - 1
                             target_c_delta, target_pw_delta = exchange_penalty_delta(opt_exchange)
                             prev = map(add, opt_exchange.v_route.get_penalty(), opt_exchange.w_route.get_penalty())
+
+                            assert len(set([cust.number for cust in ejection_pool] + [customer.number for route in routes for customer in route.route._customers])) \
+                                == len(self.problem.customers)  
+
                             apply_exchange(opt_exchange)
                             cur = map(add, opt_exchange.v_route.get_penalty(), opt_exchange.w_route.get_penalty())
                             c_delta, pw_delta = map(sub, cur, prev)
@@ -400,32 +468,332 @@ class EAMA:
                             split_by_feasibility()
                             assert len(ejection_pool) + sum([len(route.route._customers) - 2 for route in routes]) \
                                 == len(self.problem.customers) - 1
+                            assert len(set([cust.number for cust in ejection_pool] + [customer.number for route in routes for customer in route.route._customers])) \
+                                == len(self.problem.customers)
+                    assert sum([sum(route.get_penalty()) for route in routes]) == 0
+                    print(len(ejection_pool) + sum([len(route.route._customers) - 2 for route in routes]), len(self.problem.customers) - 1)
+                    assert len(ejection_pool) + sum([len(route.route._customers) - 2 for route in routes]) \
+                        == len(self.problem.customers) - 1
+                    assert len(set([cust.number for cust in ejection_pool] + [customer.number for route in routes for customer in route.route._customers])) \
+                        == len(self.problem.customers)  
                     return True
 
+                assert len(set([cust.number for cust in ejection_pool] + [v.number] + [customer.number for route in routes for customer in route.route._customers])) \
+                    == len(self.problem.customers)  
+
                 if try_to_insert_somewhere():
+                    print("insert")
+                    assert sum([sum(route.get_penalty()) for route in routes]) == 0
+                    assert len(ejection_pool) + sum([len(route.route._customers) - 2 for route in routes]) \
+                         == len(self.problem.customers) - 1
                     continue
                 elif squeeze():
+                    print("squeeze")
+                    assert sum([sum(route.get_penalty()) for route in routes]) == 0
+                    assert len(ejection_pool) + sum([len(route.route._customers) - 2 for route in routes]) \
+                         == len(self.problem.customers) - 1
+                    assert len(set([cust.number for cust in ejection_pool] + [customer.number for route in routes for customer in route.route._customers])) \
+                        == len(self.problem.customers)
                     continue
                 else:
-                    # NOT IMPLEMENTED
-                    return False
+                    print("insertion ejection")
+                    self.p[v.number] += 1
+                    # finding the best insertion-ejection combination
+                    opt_insertion_ejection = None
+                    opt_insertion_ejection_psum = math.inf
+
+                    for route in routes:
+                        for insertion in range(1, len(route.route._customers)):
+                            if time.time() - start_time > self.t_max:
+                                return False
+                    
+                            r = copy.deepcopy(route)
+                            r.route._customers.insert(insertion, v)
+                            r.recalc(r.route)
+                            n = len(r.route._customers)
+                            ejection = [1] #[1, n - 2]
+                            not_ejected = [0]
+                            a = [0] * n
+                            a_quote = [0] * n
+                            q_quote = r.demand_pf[-1]
+                            total_demand = q_quote
+                            p_sum = 0
+
+                            def incr_k():
+                                nonlocal p_sum
+                                nonlocal total_demand
+                                j = ejection[-1]
+                                ejection.append(j + 1)
+
+                                j = ejection[-1]
+                                f = not_ejected[-1]
+                                for i in range(j, j + 2):
+                                    last = r.route._customers[f]
+                                    g = r.route._customers[i]
+                                    a_quote[i] = a[f] + last.s + last.c(g)
+                                    a[i] = min(max(a_quote[i], g.e), g.l)
+                                p_sum += self.p[r.route._customers[j].number]
+                                total_demand -= r.route._customers[j].demand
+
+                            def incr_last():
+                                nonlocal p_sum
+                                nonlocal total_demand
+                                j = ejection[-1]
+                                ejection[-1] += 1
+                                not_ejected.append(j)
+                                p_sum -= self.p[r.route._customers[j].number]
+                                total_demand += r.route._customers[j].demand
+
+                                j = ejection[-1]
+                                f = not_ejected[-1]
+                                for i in range(j, j + 2):
+                                    last = r.route._customers[f]
+                                    g = r.route._customers[i]
+                                    a_quote[i] = a[f] + last.s + last.c(g)
+                                    a[i] = min(max(a_quote[i], g.e), g.l)
+                                p_sum += self.p[r.route._customers[j].number]
+                                total_demand -= r.route._customers[j].demand
+
+                            #def backtrack():
+                            #    nonlocal p_sum
+                            #    nonlocal total_demand
+                            #    j = ejection.pop(-1)
+                            #    while len(not_ejected) > 0 and not_ejected[-1] > ejection[-1]:
+                            #        not_ejected.pop(-1)
+                            #    p_sum -= self.p[r.route._customers[j].number]
+                            #    total_demand += r.route._customers[j].demand
+                            #    incr_last()                      
+                            
+                            j = ejection[-1]
+                            f = not_ejected[-1]
+                            for i in range(j, j + 2):
+                                last = r.route._customers[f]
+                                g = r.route._customers[i]
+                                a_quote[i] = a[f] + last.s + last.c(g)
+                                a[i] = min(max(a_quote[i], g.e), g.l)
+                            p_sum += self.p[r.route._customers[j].number]
+                            total_demand -= r.route._customers[j].demand
+
+                            #print("================")
+                            while True:
+                                #print(ejection)
+                                j = ejection[-1] + 1
+
+                                # assert
+                                t_a_quote = r.route._customers[0].e
+                                t_a = r.route._customers[0].e
+                                last = 0
+                                for i in range(1, j + 1):
+                                    if i in ejection:
+                                        continue
+                                    #print(i)
+                                    t_a_quote = t_a + r.route._customers[last].s + r.route._customers[last].c(r.route._customers[i])
+                                    t_a = min(max(t_a_quote, r.route._customers[i].e), r.route._customers[i].l)
+                                    
+                                    if t_a != a[i]:
+                                        print(ejection)
+                                        print(not_ejected)
+
+                                    assert t_a == a[i]
+                                    assert t_a_quote == a_quote[i]
+                                    if i < j:
+                                        assert t_a_quote <= r.route._customers[i].l
+                                    last = i
+                                # assert
+
+
+                                
+
+                                if a_quote[j] <= r.route._customers[j].l and \
+                                    a[j] <= r.z[j] and \
+                                    r.tw_sf[j] == 0 and \
+                                    total_demand <= self.problem.vehicle_capacity:
+
+                                    # assert
+                                    t_a_quote = r.route._customers[0].e
+                                    t_a = r.route._customers[0].e
+                                    last = 0
+                                    for i in range(1, n):
+                                        if i in ejection:
+                                            continue
+                                        #print(i)
+                                        t_a_quote = t_a + r.route._customers[last].s + r.route._customers[last].c(r.route._customers[i])
+                                        t_a = min(max(t_a_quote, r.route._customers[i].e), r.route._customers[i].l)
+                                        
+                                        if i <= j:
+                                            if t_a != a[i]:
+                                                print(ejection)
+                                                print(not_ejected)
+
+                                            assert t_a == a[i]
+                                            assert t_a_quote == a_quote[i]
+                                        #if t_a_quote > r.route._customers[i].l:
+                                            #print t_a_quote > r.route._customers[i].l
+                                        assert t_a_quote <= r.route._customers[i].l
+                                        last = i
+                                    # assert
+
+                                    # constrains satisfied
+                                    if p_sum < opt_insertion_ejection_psum:
+                                        print(ejection, a_quote)
+                                        opt_insertion_ejection = InsertionEjection(route, v, insertion, copy.deepcopy(ejection), meta=(copy.deepcopy(r), copy.deepcopy(a_quote)))
+                                        opt_insertion_ejection_psum = p_sum
+
+                                def get_next():
+                                    nonlocal p_sum
+                                    nonlocal total_demand
+                                    nonlocal a_quote
+                                    nonlocal r
+                                    nonlocal ejection
+
+                                    # iterate over ejections lexicographically
+
+                                    def backtrack():
+                                        nonlocal p_sum
+                                        nonlocal total_demand
+                                        j = ejection.pop(-1)
+                                        while len(not_ejected) > 0 and not_ejected[-1] > ejection[-1]:
+                                            not_ejected.pop(-1)
+                                        p_sum -= self.p[r.route._customers[j].number]
+                                        total_demand += r.route._customers[j].demand
+                                    
+                                    if ejection[-1] >= n - 2:
+                                        if len(ejection) == 1:
+                                            return False
+                                        backtrack()
+                                        prev = ejection[-1]
+                                        incr_last()
+                                        while r.route._customers[prev].l < a_quote[prev]:
+                                            if len(ejection) == 1:
+                                                return False
+                                            #print(ejection)
+                                            backtrack()
+                                            prev = ejection[-1]
+                                            incr_last()
+
+                                    elif len(ejection) >= self.k_max - 1:
+                                        prev = ejection[-1]
+                                        incr_last()
+                                        while r.route._customers[prev].l < a_quote[prev]:
+                                            #print(ejection)
+                                            if len(ejection) == 1:
+                                                return False
+                                            backtrack()
+                                            prev = ejection[-1]
+                                            incr_last()
+                                    else:
+                                        incr_k()
+                                    return True
+                                
+                                if not get_next():
+                                    break
+
+                    if opt_insertion_ejection == None:
+                        return False
+                    def apply_insertion_ejection(ie):
+                        nonlocal v
+
+
+
+
+
+
+
+
+                        assert len(set([cust.number for cust in ejection_pool] + [v.number] + [customer.number for route in routes for customer in route.route._customers])) \
+                            == len(self.problem.customers)
+
+                        assert len(set([cust.number for cust in ejection_pool] + [ie.v.number] + [customer.number for route in routes for customer in route.route._customers])) \
+                            == len(self.problem.customers)
+                        
+                        ie.route.route._customers.insert(ie.insertion, ie.v)
+
+                        print(ie.meta[0].route._customers)
+
+
+                        r = ie.route
+
+                        print(r.route._customers)
+
+
+                        n = len(r.route._customers)
+
+                        t_a_quote = r.route._customers[0].e
+                        t_a = r.route._customers[0].e
+                        last = 0
+
+                        print(ie.ejection, ie.meta[1])
+
+                        for i in range(1, n):
+                            if i in ie.ejection:
+                                continue
+                            print(i)
+                            t_a_quote = t_a + r.route._customers[last].s + r.route._customers[last].c(r.route._customers[i])
+                            t_a = min(max(t_a_quote, r.route._customers[i].e), r.route._customers[i].l)
+                            
+                            #assert t_a_quote == ie.meta[1][i]
+
+                            if t_a_quote > r.route._customers[i].l:
+                                print(ie.ejection)
+                            assert t_a_quote <= r.route._customers[i].l
+                            last = i
+
+
+
+                        assert len(set([cust.number for cust in ejection_pool] + [customer.number for route in routes for customer in route.route._customers])) \
+                            == len(self.problem.customers)
+
+                        for i, pos in enumerate(ie.ejection):
+                            ejection_pool.append(ie.route.route._customers.pop(pos - i))
+                        ie.route.recalc(ie.route.route)
+                    for route in routes:
+                        route.recalc(route.route)
+                    assert sum([sum(route.get_penalty()) for route in routes]) == 0
+                    assert len(set([cust.number for cust in ejection_pool] + [v.number] + [customer.number for route in routes for customer in route.route._customers])) \
+                        == len(self.problem.customers)
+
+                    print("================")
+                    print(opt_insertion_ejection.ejection, opt_insertion_ejection.meta[1])
+
+
+                    apply_insertion_ejection(opt_insertion_ejection)
+                    for route in routes:
+                        route.recalc(route.route)
+                    assert sum([route.get_penalty()[0] for route in routes]) == 0
+                    assert sum([route.get_penalty()[1] for route in routes]) == 0
+                    assert len(ejection_pool) + sum([len(route.route._customers) - 2 for route in routes]) \
+                        == len(self.problem.customers) - 1
+                    assert len(set([cust.number for cust in ejection_pool] + [customer.number for route in routes for customer in route.route._customers])) \
+                        == len(self.problem.customers)
+            assert len(routes) == m
+            #print("lllklmk:")
+            #for route in routes:
+            #    print("======")
+            #    print(route.route._customers)
             return True
 
         prepare()
-        m = len(customers)
-        routes = [PenaltyCalculator() for _ in range(m)]
-        for i, route in enumerate(routes):
-            route.recalc(Route(self.problem, [customers[i]]))
         
         solution = None
         # try to reduce number of routes
         while m > 1:
-            if not delete_route(routes):
+            if not delete_route():
                 return m, [route.route for route in solution]
             solution = copy.deepcopy(routes)
             m = m - 1
             if self.debug:
                 print(m)
+            #print("dwdawda:")
+            #for route in routes:
+            #    print("======")
+            #    print(route.route._customers)
+            assert sum([sum(route.get_penalty()) for route in routes]) == 0
+            if sum([len(route.route._customers) - 2 for route in routes]) != len(self.problem.customers) - 1:
+                print(sum([len(route.route._customers) - 2 for route in routes]), len(self.problem.customers) - 1)
+            assert sum([len(route.route._customers) - 2 for route in routes]) \
+                         == len(self.problem.customers) - 1
+            assert len(set([customer.number for route in routes for customer in route.route._customers])) \
+                        == len(self.problem.customers)
         return 1, [route.route for route in solution]
 
     def generate_initial_population(self):

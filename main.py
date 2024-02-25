@@ -6,11 +6,11 @@ if __name__ == '__main__':
     problem_file = "C108.txt"
     assert os.path.exists(problem_file), "Problem file doesn't exist"
     problem = SolomonFormatParser(problem_file).get_problem()
-    
-    m, s = EAMA(problem).powerful_route_minimization_heuristic()
+
+    m, s = EAMA(problem, debug=False).powerful_route_minimization_heuristic()
     with open(f"""solutions/{problem_file.split(os.sep)[-1].split(".")[0]}.sol""", 'w') as f:
         f.write(problem.print_canonical(s))
-    
+
     '''
     customers = [
         Customer(0, 0, 0, 1, 0, 100, 0),#0
@@ -24,5 +24,5 @@ if __name__ == '__main__':
         Customer(8, 0, 4, 1, 6, 8, 1),  #8
     ]
     problem = Problem('test', customers, 10, 10)
-    print(EAMA(problem).powerful_route_minimization_heuristic())
+    print(EAMA(problem).powerful_route_minimization_heuristic()[0])
     '''
