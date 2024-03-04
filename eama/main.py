@@ -51,6 +51,8 @@ class EAMA:
 
     # determine the minimum possible number of routes
     def powerful_route_minimization_heuristic(self):
+        start_time = time.time()
+        
         m = 0
         routes = []
         customers = []
@@ -90,7 +92,7 @@ class EAMA:
 
         def delete_route():
             nonlocal routes
-            start_time = time.time()
+            nonlocal start_time
 
             m = len(routes)
             ejection_pool = []
@@ -134,6 +136,9 @@ class EAMA:
                         #shuffle(positions)
                         # search for feasible insertion position
                         for position in positions:
+                            if time.time() - start_time > self.t_max:
+                                return False
+
                             if sum(route.get_insert_penalty(position, v)) == 0:
                                 route.route._customers.insert(position, v)
                                 route.recalc(route.route)

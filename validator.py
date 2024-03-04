@@ -23,6 +23,10 @@ def check_route(problem, line):
             print(customer.e, float(t), customer.l)
         assert customer.e <= float(t) < customer.l, f"Time violation for customer {c}"
     assert sum([x.demand for x in customers]) <= problem.vehicle_capacity, f"Capacity violation for line {line}"
+    distance = 0
+    for a, b in zip(customers[:-1], customers[1:]):
+        distance += a.c(b)
+    return distance
 
 
 def check_solution(problem: Problem, solution_file: str):
@@ -30,21 +34,22 @@ def check_solution(problem: Problem, solution_file: str):
         routes = f.readlines()
     assert len(routes) <= problem.vehicle_number, "Vehicle number violation"
 
+    vehicles = len(routes)
+    distance = 0
     for route in routes:
-        check_route(problem, route)
+        distance += check_route(problem, route)
     count = 0
     for cust in problem.customers:
         if cust.is_serviced:
             count += 1
-    print(count, len(problem.customers))
     assert all(map(lambda x: x.is_serviced, problem.customers)), "Each customer must be served"
+    return vehicles, distance
 
 
 if __name__ == '__main__':
     args = arguments()
-    print(args.problem)
     assert os.path.exists(args.problem), "Incorrect problem file"
     assert os.path.exists(args.solution), "Incorrect solution file"
     problem = SolomonFormatParser(os.path.abspath(args.problem)).get_problem()
-    check_solution(problem, os.path.abspath(args.solution))
-    print("Well done")
+    vehicles, distance = check_solution(problem, os.path.abspath(args.solution))
+    print(vehicles, distance)
