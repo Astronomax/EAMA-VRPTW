@@ -25,7 +25,7 @@ for file in sorted(os.listdir(problem_dir)):
     instance_name = Path(file).stem.lower()
     problem = SolomonFormatParser(f'{problem_dir}/{file}').get_problem()  
     start_time = time.time()
-    vehicles, s = EAMA(problem, t_max=10, debug=True).powerful_route_minimization_heuristic()
+    vehicles, s = EAMA(problem, t_max=1800, debug=False).powerful_route_minimization_heuristic()
     print(f'elapsed time: {time.time() - start_time}')
     with open(f"""{solution_dir}/{instance_name}.sol""", 'w') as f:
         f.write(problem.print_canonical(s))

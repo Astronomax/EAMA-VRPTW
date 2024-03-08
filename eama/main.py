@@ -8,7 +8,7 @@ from copy import deepcopy
 from itertools import tee
 from math import ceil, inf
 from operator import add, sub
-from random import randint, shuffle
+from random import randint, sample
 
 import time
 
@@ -35,7 +35,7 @@ class EAMA:
             Exchange(v_route, v_pos, w_route, w_pos + 1, ExchangeType.Exchange),
     ]
 
-    def __init__(self, problem: Problem, obj_func=None, n_near=100, debug=False, k_max=5, t_max=600):
+    def __init__(self, problem: Problem, obj_func=None, n_near=100, debug=False, k_max=5, t_max=600, i_rand=1000):
         self.problem = problem
         if not obj_func:
             obj_func = self.problem.obj_func
@@ -45,6 +45,7 @@ class EAMA:
         self.k_max = k_max
         self.p = [0] * (len(self.problem.customers) + 1)
         self.t_max = t_max
+        self.i_rand = i_rand
 
     def assert_zero_penalty(self, routes):
         assert sum([sum(route.get_penalty()) for route in routes]) == 0
@@ -56,17 +57,15 @@ class EAMA:
         m = 0
         routes = []
         customers = []
-        '''
-        distance_tresholds = []
-        '''
+        nearest = []
+
         # prepare some useful data
         def prepare():
             nonlocal m
             nonlocal routes
             nonlocal customers
-            '''
-            nonlocal distance_tresholds
-            '''
+            nonlocal nearest
+
             # list of all customers
             customers = self.problem.customers
             is_not_depo = lambda x: x.number != self.problem.depot.number
@@ -77,22 +76,20 @@ class EAMA:
             for i, route in enumerate(routes):
                 route.recalc(Route(self.problem, [customers[i]]))
 
-            '''
             # list of distances to n_near-nearest customers
-            distance_tresholds = [0] * len(customers)
+            nearest = [[]] * (len(customers) + 1)
             # we will have to copy because "sort" will affect
             # the for loop iterating order
-            customers_copy = customers.copy()
-            for from_customer, i in enumerate(customers):
-                distance = lambda to_customer: from_customer.c(to_customer)
-                sort(customers_copy, key=distance)
-                nth_nearest = customers_copy[self.n_near]
-                distance_tresholds[i] = distance(nth_nearest)
-            '''
+            customers_sorted = customers.copy()
+            for customer in customers:
+                distance = lambda to_customer: customer.c(to_customer)
+                customers_sorted = sorted(customers_sorted, key=distance)
+                nearest[customer.number] = customers_sorted[:self.n_near]
 
         def delete_route():
             nonlocal routes
             nonlocal start_time
+            nonlocal nearest
 
             m = len(routes)
             ejection_pool = []
@@ -150,6 +147,7 @@ class EAMA:
                 def squeeze():
                     nonlocal start_time
                     nonlocal routes
+                    nonlocal nearest
 
                     routes_initial = deepcopy(routes)
 
@@ -158,7 +156,7 @@ class EAMA:
                         [(route, pos)                                       \
                         for route in routes                                 \
                         for pos in range(1, len(route.route._customers))]
-                    route, pos = max(insertions, key=lambda p: sum(p[0].get_insert_delta(p[1], v))) # alpha = beta = 1
+                    route, pos = min(insertions, key=lambda p: sum(p[0].get_insert_delta(p[1], v))) # alpha = beta = 1
                     route.route._customers.insert(pos, v)
                     route.recalc(route.route)
 
@@ -177,6 +175,14 @@ class EAMA:
                         feasible = list(filter(lambda r: r.is_feasible(), feasible))
 
                     split_by_feasibility()
+
+                    ctr = [None] * len(self.problem.customers)
+                    for route in routes:
+                        for pos, customer in enumerate(route.route._customers):
+                            if customer.number == self.problem.depot.number:
+                                continue
+                            ctr[customer.number] = (route, pos)
+
                     while len(infeasible) > 0:
                         penalty_sum = sum([sum(route.get_penalty()) for route in infeasible])
                         if self.debug:
@@ -190,16 +196,23 @@ class EAMA:
                         opt_exchange = None
                         opt_exchange_delta = inf
                         for v_pos in range(0, len(v_route.route._customers)):
-                            for i, w_route in enumerate(routes):
-                                for w_pos in range(0, len(w_route.route._customers)):
-                                    for j, exchange_gen_f in enumerate(self.exchanges):
-                                        e = exchange_gen_f(v_route, v_pos, w_route, w_pos)
-                                        if not exchange_appliable(e):
-                                            continue
-                                        p_c_delta, p_tw_delta = exchange_penalty_delta(e)
-                                        if p_c_delta + p_tw_delta < opt_exchange_delta: # alpha = beta = 1
-                                            opt_exchange_delta = p_c_delta + p_tw_delta # alpha = beta = 1
-                                            opt_exchange = e
+                            vv = v_route.route._customers[v_pos]
+                            if vv.number == self.problem.depot.number:
+                                continue
+                            for w in nearest[vv.number]:
+                                if w.number in [customer.number for customer in ejection_pool]:
+                                    continue
+                                w_route, w_pos = ctr[w.number]
+                                assert w_route.route._customers[w_pos].number == w.number
+
+                                for j, exchange_gen_f in enumerate(self.exchanges):
+                                    e = exchange_gen_f(v_route, v_pos, w_route, w_pos)
+                                    if not exchange_appliable(e):
+                                        continue
+                                    p_c_delta, p_tw_delta = exchange_penalty_delta(e)
+                                    if p_c_delta + p_tw_delta < opt_exchange_delta: # alpha = beta = 1
+                                        opt_exchange_delta = p_c_delta + p_tw_delta # alpha = beta = 1
+                                        opt_exchange = e
                         if self.debug:
                             print(f'delta: {opt_exchange_delta}')
                         if opt_exchange_delta > -1e-5:
@@ -212,6 +225,13 @@ class EAMA:
                             target_c_delta, target_pw_delta = exchange_penalty_delta(opt_exchange)
                             prev = map(add, opt_exchange.v_route.get_penalty(), opt_exchange.w_route.get_penalty())
                             apply_exchange(opt_exchange)
+
+                            for route in [opt_exchange.v_route, opt_exchange.w_route]:
+                                for pos, customer in enumerate(route.route._customers):
+                                    if customer.number == self.problem.depot.number:
+                                        continue
+                                    ctr[customer.number] = (route, pos)
+
                             cur = map(add, opt_exchange.v_route.get_penalty(), opt_exchange.w_route.get_penalty())
                             c_delta, pw_delta = map(sub, cur, prev)
                             if opt_exchange.v_route is opt_exchange.w_route:
@@ -286,6 +306,27 @@ class EAMA:
                     assert check_no_losses_with_v()
 
                     apply_insertion_ejection(opt_insertion_ejection)
+
+                    def perturb():
+                        def seek_for_feasible_exchange():
+                            for v_route in sample(routes, len(routes)):
+                                v_customers = v_route.route._customers
+                                for v_pos, _ in enumerate(sample(v_customers, len(v_customers))):
+                                    for w_route in sample(routes, len(routes)):
+                                        w_customers = w_route.route._customers
+                                        for w_pos, _ in enumerate(sample(w_customers, len(w_customers))):
+                                            for exchange_gen_f in self.exchanges:
+                                                e = exchange_gen_f(v_route, v_pos, w_route, w_pos)
+                                                if not exchange_appliable(e):
+                                                    continue
+                                                p_c_delta, p_tw_delta = exchange_penalty_delta(e)
+                                                if p_c_delta + p_tw_delta <= 0:
+                                                    return e
+
+                        for _ in range(self.i_rand):
+                            e = seek_for_feasible_exchange()
+                            apply_exchange(e)
+                    perturb()
             assert len(routes) == m
             return True
 
