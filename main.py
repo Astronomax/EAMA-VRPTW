@@ -16,7 +16,8 @@ if __name__ == '__main__':
 
     problem = SolomonFormatParser(args.problem).get_problem()  
     start_time = time.time()
-    m, s = EAMA(problem, t_max=1800, debug=True).powerful_route_minimization_heuristic()
+    s = EAMA(problem, t_max=1800, debug=True).powerful_route_minimization_heuristic()
+    m = len(s)
     print(f'elapsed time: {time.time() - start_time}')
     with open(f"""solutions/{args.problem.split(os.sep)[-1].split(".")[0]}.sol""", 'w') as f:
         f.write(problem.print_canonical(s))

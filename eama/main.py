@@ -8,8 +8,9 @@ from copy import deepcopy
 from itertools import tee
 from math import ceil, inf
 from operator import add, sub
-from random import randint, sample
+from random import randint, sample, shuffle
 
+import os
 import time
 
 
@@ -46,12 +47,13 @@ class EAMA:
         self.p = [0] * (len(self.problem.customers) + 1)
         self.t_max = t_max
         self.i_rand = i_rand
+        self.n_pop = 100
 
     def assert_zero_penalty(self, routes):
         assert sum([sum(route.get_penalty()) for route in routes]) == 0
 
     # determine the minimum possible number of routes
-    def powerful_route_minimization_heuristic(self):
+    def powerful_route_minimization_heuristic(self, lower_bound=None):
         start_time = time.time()
         
         m = 0
@@ -267,7 +269,7 @@ class EAMA:
                     opt_insertion_ejection = None
                     opt_insertion_ejection_psum = inf
 
-                    for route in routes:
+                    for route_ind, route in enumerate(routes):
                         for insertion in range(1, len(route.route._customers)):
                             if time.time() - start_time > self.t_max:
                                 return False
@@ -277,7 +279,8 @@ class EAMA:
                             r.recalc(r.route)
                             
                             for ejection, a_quote, a, total_demand, p_sum in ejections_gen(r, self.p, self.k_max):
-                                assert check_ejection_metadata_is_valid(r, ejection, a_quote, a)
+                                print(f'{route_ind}/{len(routes)}: {ejection}')
+                                assert check_ejection_metadata_is_valid(r, self.p, self.k_max, ejection, a_quote, a, total_demand, p_sum)
                                 j = ejection[-1] + 1
 
                                 if a_quote[j] <= r.route._customers[j].l and \
@@ -286,7 +289,10 @@ class EAMA:
                                     total_demand <= self.problem.vehicle_capacity:
 
                                     # constrains satisfied
-                                    if p_sum < opt_insertion_ejection_psum:
+                                    if p_sum < opt_insertion_ejection_psum or \
+                                        p_sum == opt_insertion_ejection_psum and \
+                                        len(ejection) < len(opt_insertion_ejection.ejection):
+
                                         opt_insertion_ejection = InsertionEjection(route, v, insertion, deepcopy(ejection))
                                         opt_insertion_ejection_psum = p_sum
 
@@ -333,7 +339,10 @@ class EAMA:
         prepare()
         
         solution = None
-        lower_bound = ceil(sum([c.demand for c in self.problem.customers]) / self.problem.vehicle_capacity)
+        if lower_bound:
+            lower_bound = min(lower_bound, ceil(sum([c.demand for c in self.problem.customers]) / self.problem.vehicle_capacity))
+        else:
+            lower_bound = ceil(sum([c.demand for c in self.problem.customers]) / self.problem.vehicle_capacity)
         # try to reduce number of routes
         while m > lower_bound:
             if self.debug:
@@ -345,11 +354,14 @@ class EAMA:
             self.assert_zero_penalty(routes)
             assert len(set([customer.number for route in routes for customer in route.route._customers])) \
                         == len(self.problem.customers)
-        return m, [route.route for route in solution]
+        return [route.route for route in solution]
 
     def generate_initial_population(self):
-        m = self.eval_min_routes_number()
-        pass
+        initial_population = [None] * self.n_pop
+        initial_population[0] = self.eval_min_routes_number()
+        for i, _ in enumerate(initial_population[1:]):
+            initial_population[i] = self.eval_min_routes_number(len(initial_population[0]))
+        return initial_population
 
     # edge assembly crossover type
     def eax(self):
