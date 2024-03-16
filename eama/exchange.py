@@ -71,10 +71,10 @@ def apply_exchange(e: Exchange):
     e.v_route.recalc(e.v_route.route)
     e.w_route.recalc(e.w_route.route)
 
-def exchange_penalty_delta(e: Exchange):
+def exchange_penalty_delta(e: Exchange, alpha, beta):
     if e.type == ExchangeType.TwoOpt:
-        return e.v_route.two_opt_penalty_delta(e.v_pos, e.w_route, e.w_pos)
+        return e.v_route.two_opt_penalty_delta(e.v_pos, e.w_route, e.w_pos, alpha, beta)
     elif e.type == ExchangeType.OutRelocate:
-        return e.v_route.out_relocate_penalty_delta(e.v_pos, e.w_route, e.w_pos)
+        return e.v_route.out_relocate_penalty_delta(e.v_pos, e.w_route, e.w_pos, alpha, beta)
     elif e.type == ExchangeType.Exchange:
-        return e.v_route.exchange_penalty_delta(e.v_pos, e.w_route, e.w_pos)
+        return e.v_route.exchange_penalty_delta(e.v_pos, e.w_route, e.w_pos, alpha, beta)

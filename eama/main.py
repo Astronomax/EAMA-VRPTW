@@ -36,7 +36,7 @@ class EAMA:
             Exchange(v_route, v_pos, w_route, w_pos + 1, ExchangeType.Exchange),
     ]
 
-    def __init__(self, problem: Problem, obj_func=None, n_near=100, debug=False, k_max=5, t_max=600, i_rand=1000):
+    def __init__(self, problem: Problem, obj_func=None, n_near=100, debug=False, k_max=5, t_max=600, i_rand=1000, n_pop=100):
         self.problem = problem
         if not obj_func:
             obj_func = self.problem.obj_func
@@ -47,10 +47,10 @@ class EAMA:
         self.p = [0] * (len(self.problem.customers) + 1)
         self.t_max = t_max
         self.i_rand = i_rand
-        self.n_pop = 100
+        self.n_pop = n_pop
 
     def assert_zero_penalty(self, routes):
-        assert sum([sum(route.get_penalty()) for route in routes]) == 0
+        assert sum([route.get_penalty(1, 1) for route in routes]) == 0
 
     # determine the minimum possible number of routes
     def powerful_route_minimization_heuristic(self, lower_bound=None):
@@ -60,6 +60,8 @@ class EAMA:
         routes = []
         customers = []
         nearest = []
+        alpha = 1
+        beta = 1
 
         # prepare some useful data
         def prepare():
@@ -138,7 +140,7 @@ class EAMA:
                             if time.time() - start_time > self.t_max:
                                 return False
 
-                            if sum(route.get_insert_penalty(position, v)) == 0:
+                            if route.get_insert_penalty(position, v, 1, 1) == 0:
                                 route.route._customers.insert(position, v)
                                 route.recalc(route.route)
                                 assert check_no_losses_without_v()
@@ -147,18 +149,14 @@ class EAMA:
                     return False
 
                 def squeeze():
-                    nonlocal start_time
-                    nonlocal routes
-                    nonlocal nearest
+                    nonlocal start_time, routes, nearest, beta
 
                     routes_initial = deepcopy(routes)
 
                     # insert such that penalty is minimum
-                    insertions =                                            \
-                        [(route, pos)                                       \
-                        for route in routes                                 \
+                    insertions = [(route, pos) for route in routes \
                         for pos in range(1, len(route.route._customers))]
-                    route, pos = min(insertions, key=lambda p: sum(p[0].get_insert_delta(p[1], v))) # alpha = beta = 1
+                    route, pos = min(insertions, key=lambda p: p[0].get_insert_delta(p[1], v, alpha, beta))
                     route.route._customers.insert(pos, v)
                     route.recalc(route.route)
 
@@ -167,8 +165,7 @@ class EAMA:
                     feasible = []
 
                     def split_by_feasibility():
-                        nonlocal infeasible
-                        nonlocal feasible
+                        nonlocal infeasible, feasible
 
                         infeasible, feasible = tee(routes)
                         # routes from "routes" copied by reference into
@@ -186,7 +183,7 @@ class EAMA:
                             ctr[customer.number] = (route, pos)
 
                     while len(infeasible) > 0:
-                        penalty_sum = sum([sum(route.get_penalty()) for route in infeasible])
+                        penalty_sum = sum([route.get_penalty(alpha, beta) for route in infeasible])
                         if self.debug:
                             print(f'penalty_sum: {penalty_sum}')
                         
@@ -211,21 +208,27 @@ class EAMA:
                                     e = exchange_gen_f(v_route, v_pos, w_route, w_pos)
                                     if not exchange_appliable(e):
                                         continue
-                                    p_c_delta, p_tw_delta = exchange_penalty_delta(e)
-                                    if p_c_delta + p_tw_delta < opt_exchange_delta: # alpha = beta = 1
-                                        opt_exchange_delta = p_c_delta + p_tw_delta # alpha = beta = 1
+                                    p_delta = exchange_penalty_delta(e, alpha, beta)
+                                    if p_delta < opt_exchange_delta:
+                                        opt_exchange_delta = p_delta
                                         opt_exchange = e
                         if self.debug:
                             print(f'delta: {opt_exchange_delta}')
                         if opt_exchange_delta > -1e-5:
                             # return to initial state
+                            if sum([route.get_penalty(1, -1) for route in routes]) < 0:
+                                beta /= 0.99
+                            else:
+                                beta *= 0.99
                             routes = routes_initial
                             return False
                         else:
                             # apply optimal exchange
                             assert check_no_losses_without_v()
-                            target_c_delta, target_pw_delta = exchange_penalty_delta(opt_exchange)
-                            prev = map(add, opt_exchange.v_route.get_penalty(), opt_exchange.w_route.get_penalty())
+                            target_penalty_delta = exchange_penalty_delta(opt_exchange, alpha, beta)
+                            penalty_before = opt_exchange.v_route.get_penalty(alpha, beta) \
+                                + opt_exchange.w_route.get_penalty(alpha, beta)
+                            
                             apply_exchange(opt_exchange)
 
                             for route in [opt_exchange.v_route, opt_exchange.w_route]:
@@ -234,14 +237,15 @@ class EAMA:
                                         continue
                                     ctr[customer.number] = (route, pos)
 
-                            cur = map(add, opt_exchange.v_route.get_penalty(), opt_exchange.w_route.get_penalty())
-                            c_delta, pw_delta = map(sub, cur, prev)
+                            penalty_after = opt_exchange.v_route.get_penalty(alpha, beta) \
+                                + opt_exchange.w_route.get_penalty(alpha, beta)
+                            penalty_delta = penalty_after - penalty_before
                             if opt_exchange.v_route is opt_exchange.w_route:
-                                pw_delta /= 2
-                                c_delta /= 2
-                            assert abs(pw_delta - target_pw_delta) < 1e-3
-                            assert abs(c_delta - target_c_delta) < 1e-3
+                                penalty_delta /= 2
+                            assert abs(penalty_delta - target_penalty_delta) < 1e-3
+
                             split_by_feasibility()
+
                             assert check_no_losses_without_v()
                     self.assert_zero_penalty(routes)
                     assert check_no_losses_without_v()
@@ -279,7 +283,6 @@ class EAMA:
                             r.recalc(r.route)
                             
                             for ejection, a_quote, a, total_demand, p_sum in ejections_gen(r, self.p, self.k_max):
-                                print(f'{route_ind}/{len(routes)}: {ejection}')
                                 assert check_ejection_metadata_is_valid(r, self.p, self.k_max, ejection, a_quote, a, total_demand, p_sum)
                                 j = ejection[-1] + 1
 
@@ -325,8 +328,7 @@ class EAMA:
                                                 e = exchange_gen_f(v_route, v_pos, w_route, w_pos)
                                                 if not exchange_appliable(e):
                                                     continue
-                                                p_c_delta, p_tw_delta = exchange_penalty_delta(e)
-                                                if p_c_delta + p_tw_delta <= 0:
+                                                if exchange_penalty_delta(e, 1, 1) <= 0:
                                                     return e
 
                         for _ in range(self.i_rand):

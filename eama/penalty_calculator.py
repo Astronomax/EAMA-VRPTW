@@ -5,7 +5,6 @@ from copy import deepcopy
 from itertools import accumulate
 from operator import add, sub
 
-
 class PenaltyCalculator:
     def recalc(self, route):
         # time windows penalty precalc
@@ -41,13 +40,13 @@ class PenaltyCalculator:
         self.demand_sf = list(accumulate(route._customers[::-1], \
                               lambda pf, c: pf + c.demand, initial=0))[::-1][:-1]
 
-    def get_penalty(self):
+    def get_penalty(self, alpha, beta):
         p_c = max(self.demand_pf[-1] - self.route.problem.vehicle_capacity, 0)
         p_tw = self.tw_pf[-1]
-        return p_c, p_tw
+        return alpha * p_c + beta * p_tw
 
     # get penalty after insertion
-    def get_insert_penalty(self, pos, v: Customer):
+    def get_insert_penalty(self, pos, v: Customer, alpha, beta):
         p_c = max(self.demand_pf[-1] + v.demand - self.route.problem.vehicle_capacity, 0)
         x_pos = pos - 1
         y_pos = pos
@@ -61,10 +60,10 @@ class PenaltyCalculator:
         a_v = min(max(a_quote_v, v.e), v.l)
         z_v = min(max(z_quote_v, v.e), v.l)
         p_tw += max(a_v - z_v, 0)
-        return p_c, p_tw
+        return alpha * p_c + beta * p_tw
 
     # get penalty after replacement
-    def get_replace_penalty(self, pos, v: Customer):
+    def get_replace_penalty(self, pos, v: Customer, alpha, beta):
         p_c = max(self.demand_pf[-1] - self.route._customers[pos].demand \
                   + v.demand - self.route.problem.vehicle_capacity, 0)
         x_pos = pos - 1
@@ -79,10 +78,10 @@ class PenaltyCalculator:
         a_v = min(max(a_quote_v, v.e), v.l)
         z_v = min(max(z_quote_v, v.e), v.l)
         p_tw += max(a_v - z_v, 0)
-        return p_c, p_tw
+        return alpha * p_c + beta * p_tw
 
     # get penalty after insertion
-    def get_extract_penalty(self, pos):
+    def get_extract_penalty(self, pos, alpha, beta):
         p_c = max(self.demand_pf[-1] - self.route._customers[pos].demand \
                   - self.route.problem.vehicle_capacity, 0)
         x_pos = pos - 1
@@ -95,15 +94,15 @@ class PenaltyCalculator:
         #p_tw += max(a_quote_v - self.z[v_pos], 0)
         p_tw += max(a_quote_v - v.l, 0)
         p_tw += max(a_v - self.z[v_pos], 0)
-        return p_c, p_tw
+        return alpha * p_c + beta * p_tw
 
-    def get_insert_delta(self, pos, v: Customer):
-        return map(sub, self.get_insert_penalty(pos, v), self.get_penalty())
+    def get_insert_delta(self, pos, v: Customer, alpha, beta):
+        return self.get_insert_penalty(pos, v, alpha, beta) - self.get_penalty(alpha, beta)
 
-    def get_extract_delta(self, pos):
-        return map(sub, self.get_extract_penalty(pos), self.get_penalty())
+    def get_extract_delta(self, pos, alpha, beta):
+        return self.get_extract_penalty(pos, alpha, beta) - self.get_penalty(alpha, beta)
 
-    def one_opt_penalty(self, v_pos, w_route, w_pos):
+    def one_opt_penalty(self, v_pos, w_route, w_pos, alpha, beta):
         if self is w_route:
             return math.inf, math.inf
         p_c = max(self.demand_pf[v_pos] + w_route.demand_sf[w_pos + 1] \
@@ -113,40 +112,39 @@ class PenaltyCalculator:
         w_next = w_route.route._customers[w_pos + 1]
         a_quote_v = self.a[v_pos] + v.s + v.c(w_next)
         p_tw += max(a_quote_v - w_route.z[w_pos + 1], 0)
-        return p_c, p_tw
+        return alpha * p_c + beta * p_tw
 
     # remove (v, v^+) and (w, w^+), and add (v, w^+) and (w, v^+)
-    def two_opt_penalty_delta(self, v_pos, w_route, w_pos):
+    def two_opt_penalty_delta(self, v_pos, w_route, w_pos, alpha, beta):
         if self is w_route:
-            return math.inf, math.inf
-        return map(sub, map(add, self.one_opt_penalty(v_pos, w_route, w_pos), \
-            w_route.one_opt_penalty(w_pos, self, v_pos)), \
-            map(add, self.get_penalty(), w_route.get_penalty()))
+            return math.inf
+        return (self.one_opt_penalty(v_pos, w_route, w_pos, alpha, beta) - self.get_penalty(alpha, beta)) + \
+            (w_route.one_opt_penalty(w_pos, self, v_pos, alpha, beta) - w_route.get_penalty(alpha, beta))
 
-    def apply_self_penalty_delta(self, v_pos, w_pos, e: ExchangeType):   
+    def apply_self_penalty_delta(self, v_pos, w_pos, e: ExchangeType, alpha, beta):   
         self_copy = deepcopy(self)
         apply_exchange(Exchange(self_copy, v_pos, self_copy, w_pos, e))
-        return map(sub, self_copy.get_penalty(), self.get_penalty())
+        return self_copy.get_penalty(alpha, beta) + self.get_penalty(alpha, beta)
 
     # insert v between w^- and w, and link v^- and v^+
-    def out_relocate_penalty_delta(self, v_pos, w_route, w_pos):
+    def out_relocate_penalty_delta(self, v_pos, w_route, w_pos, alpha, beta):
         if self is w_route:
-            return self.apply_self_penalty_delta(v_pos, w_pos, ExchangeType.OutRelocate)
+            return self.apply_self_penalty_delta(v_pos, w_pos, ExchangeType.OutRelocate, alpha, beta)
         v = self.route._customers[v_pos]
-        v_delta = self.get_extract_delta(v_pos)
-        w_delta = w_route.get_insert_delta(w_pos, v)
-        return map(add, v_delta, w_delta)
+        v_delta = self.get_extract_delta(v_pos, alpha, beta)
+        w_delta = w_route.get_insert_delta(w_pos, v, alpha, beta)
+        return v_delta + w_delta
 
     # insert v between w^- and w^+,
     # and insert w between v^- and v^+
-    def exchange_penalty_delta(self, v_pos, w_route, w_pos):
+    def exchange_penalty_delta(self, v_pos, w_route, w_pos, alpha, beta):
         if self is w_route:
-            return self.apply_self_penalty_delta(v_pos, w_pos, ExchangeType.Exchange)
+            return self.apply_self_penalty_delta(v_pos, w_pos, ExchangeType.Exchange, alpha, beta)
         v = self.route._customers[v_pos]
         w = w_route.route._customers[w_pos]
-        v_delta = map(sub, self.get_replace_penalty(v_pos, w), self.get_penalty())
-        w_delta = map(sub, w_route.get_replace_penalty(w_pos, v), w_route.get_penalty())
-        return map(add, v_delta, w_delta)
+        v_delta = self.get_replace_penalty(v_pos, w, alpha, beta) - self.get_penalty(alpha, beta)
+        w_delta = w_route.get_replace_penalty(w_pos, v, alpha, beta) - w_route.get_penalty(alpha, beta)
+        return v_delta + w_delta
 
     def is_feasible(self):
-        return sum(self.get_penalty()) == 0
+        return self.get_penalty(1, 1) == 0
