@@ -3,15 +3,101 @@ from eama.insertion_ejection import *
 from eama.penalty_calculator import *
 from eama.structure import *
 
-from collections.abc import Iterable
 from copy import deepcopy
 from itertools import tee
 from math import ceil, inf
-from operator import add, sub
-from random import randint, sample, shuffle
+from random import randint, sample, shuffle, choice
+from dataclasses import dataclass
+from concurrent.futures import ProcessPoolExecutor, wait
+from multiprocessing import cpu_count
+from functools import reduce
+import networkx as nx
+import matplotlib.pyplot as plt
 
 import os
 import time
+import sys
+
+@dataclass
+class RMHSettings:
+    n_near: int = 100
+    k_max: int = 5
+    t_max: int = 60
+    i_rand: int = 1000
+    lower_bound: int = 0
+    
+
+@dataclass
+class GIPSettings:
+    n_pop: int = 100
+    t_total: int = 600
+
+
+@dataclass
+class EAMASettings:
+    n_ch: int = 10
+
+
+class Graph:
+    def __init__(self, routes=None):
+        self.adjacency_table = {}
+        if routes != None:
+            problem = routes[0].route.problem
+            self.num_vertices = len(problem.customers)
+            for route in routes:
+                for i, _ in enumerate(route.route._customers[:-1]):
+                    u = route.route._customers[i].number
+                    v = route.route._customers[i + 1].number
+                    self.adjacency_table[u] = self.adjacency_table.get(u, set())
+                    self.adjacency_table[v] = self.adjacency_table.get(v, set())
+                    self.add_edge(u, v)
+
+    def add_edge(self, u, v):
+        self.adjacency_table[u].add(v)
+
+    def remove_edge(self, u, v):
+        self.adjacency_table[u].discard(v)
+
+    def __xor__(self, other):
+        result = Graph()
+        nodes = set(self.adjacency_table.keys()).union(set(self.adjacency_table.keys()))
+        result.adjacency_table = {u: self.adjacency_table.get(u, set()) ^ other.adjacency_table.get(u, set()) for u in nodes}
+        return result
+
+    def __ixor__(self, other):
+        for u in self.adjacency_table.keys():
+            if u in other.adjacency_table:
+                self.adjacency_table[u] ^= other.adjacency_table[u]
+        for u in other.adjacency_table.keys():
+            if u not in self.adjacency_table:
+                self.adjacency_table[u] = deepcopy(other.adjacency_table[u])
+        return self
+    
+    def inverse(self):
+        result = Graph()
+        for u, edges in self.adjacency_table.items():
+            result.adjacency_table[u] = result.adjacency_table.get(u, set())
+            for v in edges:
+                result.adjacency_table[v] = result.adjacency_table.get(v, set())               
+                result.add_edge(v, u)
+        return result
+
+    def plot(self, filename, positions=None):
+        G = nx.DiGraph()
+        fig, ax = plt.subplots(figsize=(15,15), dpi=300)
+        if positions:
+            for number in self.adjacency_table.keys():
+                G.add_node(number, pos=positions[number])
+            pos = nx.get_node_attributes(G, 'pos')
+        else:
+            G.add_nodes_from(self.adjacency_table.keys())
+            pos = nx.spring_layout(G)
+        for u, edges in self.adjacency_table.items():
+            for v in edges:
+                G.add_edge(u, v)
+        nx.draw(G, pos, with_labels=True, node_color='white', node_size=500, font_size=10, arrows=True, connectionstyle='arc3', ax=ax)
+        plt.savefig(filename, dpi=300)
+        plt.close()
 
 
 class EAMA:
@@ -36,24 +122,23 @@ class EAMA:
             Exchange(v_route, v_pos, w_route, w_pos + 1, ExchangeType.Exchange),
     ]
 
-    def __init__(self, problem: Problem, obj_func=None, n_near=100, debug=False, k_max=5, t_max=600, i_rand=1000, n_pop=100):
+    def __init__(self, problem: Problem, rmh_settings: RMHSettings,
+                gip_settings: GIPSettings, eama_settings: EAMASettings, obj_func=None, debug=False):
         self.problem = problem
         if not obj_func:
             obj_func = self.problem.obj_func
         self.obj_func = obj_func
-        self.n_near = n_near
         self.debug = debug
-        self.k_max = k_max
         self.p = [0] * (len(self.problem.customers) + 1)
-        self.t_max = t_max
-        self.i_rand = i_rand
-        self.n_pop = n_pop
+        self.rmh_settings = rmh_settings
+        self.gip_settings = gip_settings
+        self.eama_settings = eama_settings
 
     def assert_zero_penalty(self, routes):
         assert sum([route.get_penalty(1, 1) for route in routes]) == 0
 
     # determine the minimum possible number of routes
-    def powerful_route_minimization_heuristic(self, lower_bound=None):
+    def powerful_route_minimization_heuristic(self, rmh_settings: RMHSettings):
         start_time = time.time()
         
         m = 0
@@ -88,7 +173,7 @@ class EAMA:
             for customer in customers:
                 distance = lambda to_customer: customer.c(to_customer)
                 customers_sorted = sorted(customers_sorted, key=distance)
-                nearest[customer.number] = customers_sorted[:self.n_near]
+                nearest[customer.number] = customers_sorted[:rmh_settings.n_near]
 
         def delete_route():
             nonlocal routes
@@ -137,7 +222,7 @@ class EAMA:
                         #shuffle(positions)
                         # search for feasible insertion position
                         for position in positions:
-                            if time.time() - start_time > self.t_max:
+                            if time.time() - start_time > rmh_settings.t_max:
                                 return False
 
                             if route.get_insert_penalty(position, v, 1, 1) == 0:
@@ -187,7 +272,7 @@ class EAMA:
                         if self.debug:
                             print(f'penalty_sum: {penalty_sum}')
                         
-                        if time.time() - start_time > self.t_max:
+                        if time.time() - start_time > rmh_settings.t_max:
                             routes = routes_initial
                             return False
 
@@ -275,15 +360,15 @@ class EAMA:
 
                     for route_ind, route in enumerate(routes):
                         for insertion in range(1, len(route.route._customers)):
-                            if time.time() - start_time > self.t_max:
+                            if time.time() - start_time > rmh_settings.t_max:
                                 return False
                     
                             r = deepcopy(route)
                             r.route._customers.insert(insertion, v)
                             r.recalc(r.route)
                             
-                            for ejection, a_quote, a, total_demand, p_sum in ejections_gen(r, self.p, self.k_max):
-                                assert check_ejection_metadata_is_valid(r, self.p, self.k_max, ejection, a_quote, a, total_demand, p_sum)
+                            for ejection, a_quote, a, total_demand, p_sum in ejections_gen(r, self.p, rmh_settings.k_max):
+                                assert check_ejection_metadata_is_valid(r, self.p, rmh_settings.k_max, ejection, a_quote, a, total_demand, p_sum)
                                 j = ejection[-1] + 1
 
                                 if a_quote[j] <= r.route._customers[j].l and \
@@ -331,7 +416,7 @@ class EAMA:
                                                 if exchange_penalty_delta(e, 1, 1) <= 0:
                                                     return e
 
-                        for _ in range(self.i_rand):
+                        for _ in range(rmh_settings.i_rand):
                             e = seek_for_feasible_exchange()
                             apply_exchange(e)
                     perturb()
@@ -341,10 +426,7 @@ class EAMA:
         prepare()
         
         solution = None
-        if lower_bound:
-            lower_bound = min(lower_bound, ceil(sum([c.demand for c in self.problem.customers]) / self.problem.vehicle_capacity))
-        else:
-            lower_bound = ceil(sum([c.demand for c in self.problem.customers]) / self.problem.vehicle_capacity)
+        lower_bound = max(self.rmh_settings.lower_bound, ceil(sum([c.demand for c in self.problem.customers]) / self.problem.vehicle_capacity))
         # try to reduce number of routes
         while m > lower_bound:
             if self.debug:
@@ -356,18 +438,154 @@ class EAMA:
             self.assert_zero_penalty(routes)
             assert len(set([customer.number for route in routes for customer in route.route._customers])) \
                         == len(self.problem.customers)
-        return [route.route for route in solution]
+        return solution
 
     def generate_initial_population(self):
-        initial_population = [None] * self.n_pop
-        initial_population[0] = self.eval_min_routes_number()
-        for i, _ in enumerate(initial_population[1:]):
-            initial_population[i] = self.eval_min_routes_number(len(initial_population[0]))
+        initial_population = [self.powerful_route_minimization_heuristic(self.rmh_settings)]
+        rmh_settings = self.rmh_settings
+        rmh_settings.t_max = 10**10
+        rmh_settings.lower_bound = len(initial_population[0])
+        executor = ProcessPoolExecutor(max_workers=cpu_count())
+        futures = []
+        n_pop = self.gip_settings.n_pop
+        for _ in range(n_pop - 1):
+            futures.append(executor.submit(self.powerful_route_minimization_heuristic, rmh_settings))
+        wait(futures, timeout=self.gip_settings.t_total)
+        executor.shutdown(wait=True, cancel_futures=True)
+        initial_population += [future.result() for future in futures if future.done()]
+        if self.debug:
+            print(len(initial_population))        
+        initial_population += [deepcopy(initial_population[-1]) for _ in range(n_pop - len(initial_population))]
         return initial_population
 
     # edge assembly crossover type
-    def eax(self):
-        pass
+    def eax(self, p_a, p_b, strategy):
+        problem = p_a[0].route.problem
+
+        def split_into_cycles_dfs(graph, cycle, used, u):
+            cycle.append(u)
+            if u not in used:
+                used.add(u)
+                if len(graph.adjacency_table[u]) == 0:
+                    return None
+                v = choice(list(graph.adjacency_table[u]))
+                return split_into_cycles_dfs(graph, cycle, used, v)
+            else:
+                cycle = cycle[cycle.index(cycle[-1]):]
+                for u, v in zip(cycle[:-1], cycle[1:]):
+                    graph.remove_edge(u, v)
+                return cycle
+
+        def split_into_routes_and_cycles(graph):
+            graph = deepcopy(graph)
+            nodes = list(graph.adjacency_table.keys())
+            cycles = []
+            while len(nodes) > 0:
+                u = choice(list(nodes))
+                if len(graph.adjacency_table[u]) == 0:
+                    nodes.remove(u)
+                    continue
+                cycle = split_into_cycles_dfs(graph, [], set(), u)
+                if not cycle:
+                    return None
+                cycles.append(cycle)
+            routes, cycles = tee(cycles)
+            routes = list(filter(lambda c: problem.depot.number in c, routes))
+            cycles = list(filter(lambda c: problem.depot.number not in c, cycles))
+            for i, route in enumerate(routes):
+                ind = route.index(problem.depot.number)
+                routes[i] = route[ind + 1:-1] + route[:ind]
+            return routes, cycles
+
+        def split_into_alternating_cycles_dfs(graph, graph_inv, nodes, edges, used, u, inv):
+            prev = None if len(nodes) == 0 else nodes[-1][0]
+            nodes.append((u, inv))
+            if (u, inv) not in used:
+                used.add((u, inv))
+                if len(graph.adjacency_table[u]) == 0:
+                    return None
+                adjacency = list(graph.adjacency_table[u])
+                if prev is not None:
+                    adjacency.remove(prev)
+                v = choice(list(adjacency))
+                edges.append((v, u) if inv else (u, v))
+                return split_into_alternating_cycles_dfs(graph_inv, graph, nodes, edges, used, v, not inv)
+            else:
+                cycle = Graph()
+                ind = nodes.index((u, inv))
+                if inv:
+                    graph, graph_inv = graph_inv, graph
+                for u, v in edges[ind:]:
+                    assert v in graph.adjacency_table[u]
+                    assert u in graph_inv.adjacency_table[v]
+                    graph.remove_edge(u, v)
+                    graph_inv.remove_edge(v, u)
+                    cycle.adjacency_table[u] = cycle.adjacency_table.get(u, set())
+                    cycle.adjacency_table[v] = cycle.adjacency_table.get(v, set())
+                    cycle.add_edge(u, v)
+                return cycle
+
+        def split_into_alternating_cycles(graph):
+            graph = deepcopy(graph)
+            graph_inv = deepcopy(graph.inverse())
+            nodes = list(graph.adjacency_table.keys())
+            cycles = []
+            inv = False
+            while len(nodes) > 0:
+                u = choice(list(nodes))
+                if len(graph.adjacency_table[u]) == 0:
+                    if len(graph_inv.adjacency_table[u]) > 0:
+                        graph, graph_inv = graph_inv, graph
+                        inv = not inv
+                    else:
+                        nodes.remove(u)
+                        continue
+                cycle = split_into_alternating_cycles_dfs(graph, graph_inv, [], [], set(), u, inv)
+                if not cycle:
+                    return None
+                cycles.append(cycle)
+            return cycles
+        
+        cycles = split_into_alternating_cycles(Graph(p_a)^Graph(p_b))
+        assert cycles is not None
+        E_set = []
+        if strategy == 'single':
+            E_set.append(choice(cycles))
+        elif strategy == 'block':
+            center = choice(cycles)
+            center_nodes = set(center.adjacency_table.keys())
+            for cycle in cycles:
+                if center_nodes & set(cycle.adjacency_table.keys()):
+                    E_set.append(cycle)
+        intermediate_solution = reduce(lambda x, y: x^y, E_set, Graph(p_a))
+        routes, cycles = split_into_routes_and_cycles(intermediate_solution)
+        customers = {c.number: c for c in problem.customers}
+        for i, route in enumerate(routes):
+            r = Route(problem, [customers[number] for number in route])
+            routes[i] = PenaltyCalculator()
+            routes[i].recalc(r)
+        for i, cycle in enumerate(cycles):
+            cycles[i] = [customers[number] for number in cycle]
+
+        #merge cycles with routes
+        shuffle(cycles)
+        for cycle in cycles:
+            opt = None
+            opt_delta = inf
+            for r_ind, route in enumerate(routes):
+                for i, _ in enumerate(cycle[:-1]):
+                    for j, _ in enumerate(route.route._customers[:-1]):
+                        r = route.route._customers[1:j] + cycle[i + 1:] + cycle[:i] + route.route._customers[j + 1:-1]
+                        r = Route(problem, r)
+                        new_route = PenaltyCalculator()
+                        new_route.recalc(r)
+                        delta = new_route.get_penalty(1.0, 1.0) - route.get_penalty(1.0, 1.0)
+                        if delta < opt_delta:
+                            opt = (r_ind, new_route)
+                            opt_delta = delta
+            routes[opt[0]] = opt[1]
+        return routes
+
 
     # restore feasibility
     def repair(self, solution: Solution):
@@ -378,4 +596,16 @@ class EAMA:
         pass
 
     def execute(self):
+        population = self.generate_initial_population()
+        n_pop = self.gip_settings.n_pop
+        n_ch = self.eama_settings.n_ch
+        while True:
+            for i, _, in enumerate(population):
+                p_a = deepcopy(population[i])
+                p_b = population[(i + 1) % n_pop]
+                for _ in range(n_ch):
+                    g = self.eax(Graph(p_a), Graph(p_b))
+                    sigma = self.repair(sigma)
+                    sigma = self.local_search(sigma)
+
         pass
