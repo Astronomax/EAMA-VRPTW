@@ -11,7 +11,7 @@ def arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 if __name__ == '__main__':
-    '''
+    #'''
     args = arguments()
     assert os.path.exists(args.problem), "Incorrect problem file"
 
@@ -33,14 +33,13 @@ if __name__ == '__main__':
     p_b = s[1]
     Graph(p_b).plot("p_b.png", positions)
 
-    print("eax")
-    routes, cycles = eama.eax(p_a, p_b, strategy='single')#.plot("eax.png", positions
-    print(routes)
-    print(cycles)
-    
-    print(f'elapsed time: {time.time() - start_time}')
-    '''
+    routes = eama.eax(p_a, p_b, strategy='single')#.plot("eax.png", positions
+    Graph(routes).plot("eax.png", positions)
 
+    len(set(sum([route.route._customers for route in routes], []))) == len(problem.customers)
+    print(f'elapsed time: {time.time() - start_time}')
+    #'''
+    '''
     customers = [
         Customer(0, 0, 0, 0, 0, 100, 0),
         Customer(1, 1, 1, 0, 0, 100, 0),
@@ -65,7 +64,7 @@ if __name__ == '__main__':
     eama = EAMA(problem, rmh_settings=RMHSettings(), gip_settings=GIPSettings(), eama_settings=EAMASettings(), debug=False)
     routes = eama.eax(p_a, p_b, strategy='single')
 
-    print([route.route for route in routes])
-
+    Graph(routes).plot("eax.png")
+    '''
     #with open(f"""solutions/{args.problem.split(os.sep)[-1].split(".")[0]}.sol""", 'w') as f:
     #    f.write(problem.print_canonical(s))

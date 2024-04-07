@@ -95,7 +95,7 @@ class Graph:
         for u, edges in self.adjacency_table.items():
             for v in edges:
                 G.add_edge(u, v)
-        nx.draw(G, pos, with_labels=True, node_color='white', node_size=500, font_size=10, arrows=True, connectionstyle='arc3', ax=ax)
+        nx.draw(G, pos, with_labels=True, node_color='skyblue', node_size=500, font_size=10, arrows=True, connectionstyle='arc3', ax=ax)
         plt.savefig(filename, dpi=300)
         plt.close()
 
@@ -495,6 +495,8 @@ class EAMA:
             for i, route in enumerate(routes):
                 ind = route.index(problem.depot.number)
                 routes[i] = route[ind + 1:-1] + route[:ind]
+                assert len(set(routes[i])) == len(routes[i])
+                assert problem.depot.number not in routes[i]
             return routes, cycles
 
         def split_into_alternating_cycles_dfs(graph, graph_inv, nodes, edges, used, u, inv):
@@ -567,6 +569,8 @@ class EAMA:
         for i, cycle in enumerate(cycles):
             cycles[i] = [customers[number] for number in cycle]
 
+        print(len(cycles))
+
         #merge cycles with routes
         shuffle(cycles)
         for cycle in cycles:
@@ -575,7 +579,7 @@ class EAMA:
             for r_ind, route in enumerate(routes):
                 for i, _ in enumerate(cycle[:-1]):
                     for j, _ in enumerate(route.route._customers[:-1]):
-                        r = route.route._customers[1:j] + cycle[i + 1:] + cycle[:i] + route.route._customers[j + 1:-1]
+                        r = route.route._customers[1:j + 1] + cycle[i + 1:-1] + cycle[:i + 1] + route.route._customers[j + 1:-1]
                         r = Route(problem, r)
                         new_route = PenaltyCalculator()
                         new_route.recalc(r)
@@ -584,6 +588,7 @@ class EAMA:
                             opt = (r_ind, new_route)
                             opt_delta = delta
             routes[opt[0]] = opt[1]
+            assert len(set(opt[1].route._customers[:-1])) == len(opt[1].route._customers[:-1])
         return routes
 
 
