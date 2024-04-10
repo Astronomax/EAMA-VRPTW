@@ -15,6 +15,9 @@ class Customer:
     def __repr__(self):
         return f"C_{self.number}: x={self.x}, y={self.y}, demand = {self.demand}, from_date={self.e}, due_date={self.l}, service_time={self.s}"
 
+    def depot(self):
+        return self.number == 0
+
     def c(self, target):
         return math.sqrt(math.pow(self.x - target.x, 2) + math.pow(self.y - target.y, 2))
 

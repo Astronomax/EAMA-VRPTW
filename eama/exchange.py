@@ -1,3 +1,5 @@
+from eama.modification import Modification
+
 from enum import Enum
 
 
@@ -7,74 +9,147 @@ class ExchangeType(Enum):
     Exchange = 3
 
 
-class Exchange:
-    def __init__(self, v_route, v_pos, w_route, w_pos, type):
-        self.v_route = v_route
-        self.v_pos = v_pos
-        self.w_route = w_route
-        self.w_pos = w_pos
-        self.type = type
+class Exchange(Modification):
+    def __init__(self, v: 'ListNode', w: 'ListNode', type: ExchangeType):
+        assert v is not None and w is not None 
+        self._v = v
+        self._w = w
+        self._type = type
+
+    def appliable(self):
+        try:
+            if self._type == ExchangeType.TwoOpt:
+                if self._v.route() is self._w.route():
+                    raise Exception()
+                if self._v.node().tail():
+                    raise Exception()
+                if self._w.node().tail():
+                    raise Exception()
+                # the path after applying two-opt should not be empty
+                if self._v.node().head() and self._w.next().node().tail():
+                    raise Exception()
+                if self._w.node().head() and self._v.next().node().tail():
+                    raise Exception()
+            elif self._type == ExchangeType.OutRelocate:
+                if self._v.node().head():
+                    raise Exception()
+                if self._v.node().tail():
+                    raise Exception()
+                # no path should be empty after applying exchange
+                if len(self._v.route()) <= 1:
+                    raise Exception()
+                # w is allowed to be tail but not allowed to be head
+                if self._w.node().head():
+                    raise Exception()
+                if self._v is self._w:
+                    raise Exception()
+            elif self._type == ExchangeType.Exchange:
+                if self._v.node().head():
+                    raise Exception()
+                if self._v.node().tail():
+                    raise Exception()
+                if self._w.node().head():
+                    raise Exception()
+                if self._w.node().tail():
+                    raise Exception()
+        except Exception as _:
+            return False
+        return True  
+
+    def penalty_delta(self, alpha, beta):
+        assert self.appliable()
+        from eama.penalty_calculator import PenaltyCalculator
+        if self._type == ExchangeType.TwoOpt:
+            return PenaltyCalculator.two_opt_penalty_delta(self._v, self._w, alpha, beta)
+        elif self._type == ExchangeType.OutRelocate:
+            return PenaltyCalculator.out_relocate_penalty_delta(self._v, self._w, alpha, beta)
+        elif self._type == ExchangeType.Exchange:
+            return PenaltyCalculator.exchange_penalty_delta(self._v, self._w, alpha, beta)
+        assert False
+
+    def distance_delta(self):
+        assert self.appliable()
+        from eama.distance_calculator import DistanceCalculator
+        if self._type == ExchangeType.TwoOpt:
+            return DistanceCalculator.two_opt_distance_delta(self._v, self._w)
+        elif self._type == ExchangeType.OutRelocate:
+            return DistanceCalculator.out_relocate_distance_delta(self._v, self._w)
+        elif self._type == ExchangeType.Exchange:
+            return DistanceCalculator.exchange_distance_delta(self._v, self._w)
+        assert False
+
+    def apply(self):
+        if not self.appliable():
+            return False
+        v_route = self._v.route()
+        w_route = self._w.route()
+        if self._type == ExchangeType.TwoOpt:
+            assert v_route is not w_route
+
+            assert not self._v.node().tail()
+            assert not self._w.node().tail()
+            # the path after applying two-opt should not be empty
+            assert not self._v.node().head() or not self._w.next().node().tail()
+            assert not self._w.node().head() or not self._v.next().node().tail()
+
+            v_node = self._v.node()
+            w_node = self._w.node()
+            v_node.next, w_node.next = w_node.next, v_node.next
+            v_node.next.prev = v_node
+            w_node.next.prev = w_node
+
+            for node in self._v.node().next.iter():
+                node.value._index._route = v_route
+            for node in self._w.node().next.iter():
+                node.value._index._route = w_route
+        elif self._type == ExchangeType.OutRelocate:
+            assert not self._w.ejected()
+            assert not self._v.node().head()
+            assert not self._v.node().tail()
+            # no path should be empty after applying exchange
+            assert len(v_route) > 1
+            # w is allowed to be tail but not allowed to be head
+            assert not self._w.node().head()
+            assert self._v is not self._w
+
+            l = len(v_route)
+            v_route.eject(self._v)
+            assert len(v_route) == l - 1
+            for node in v_route._route.head.iter():
+                assert node.value.route() is v_route
+            for node in w_route._route.head.iter():
+                assert node.value.route() is w_route
+            w_route.insert(self._w, self._v)
+            for node in v_route._route.head.iter():
+                assert node.value.route() is v_route
+            for node in w_route._route.head.iter():
+                assert node.value.route() is w_route
+        elif self._type == ExchangeType.Exchange:
+            assert not self._v.node().head()
+            assert not self._v.node().tail()
+            assert not self._w.node().head()
+            assert not self._w.node().tail()
+            
+            v_node, w_node = self._v.node(), self._w.node()
+            v_node.value, w_node.value = self._w, self._v
+            self._v._index, self._w._index = self._w._index, self._v._index
+        v_route._pc.update()
+        v_route._dc.update()
+        if v_route is not w_route:
+            w_route._pc.update()
+            w_route._dc.update()
+        return True
+    
+    def feasible(self):
+        return (self.penalty_delta(1, 1) == 0)
 
 
-def exchange_appliable(e: Exchange):
-    n_v = len(e.v_route.route._customers)
-    n_w = len(e.w_route.route._customers)
-    if e.v_pos < 0 or e.w_pos < 0:
-        return False
-    if e.type == ExchangeType.TwoOpt:
-        if e.v_route is e.w_route:
-            return False
-        elif e.v_pos >= n_v - 1 or e.w_pos >= n_w - 1:
-            return False
-        elif e.v_pos == n_v - 2 and e.w_pos == 0:
-            return False
-        elif e.w_pos == n_w - 2 and e.v_pos == 0:
-            return False
-    elif e.type == ExchangeType.OutRelocate:
-        if e.v_pos <= 0 or e.v_pos >= n_v - 1:
-            return False
-        elif e.v_route is e.w_route:
-            w_pos = e.w_pos
-            if e.v_pos < e.w_pos:
-                w_pos = e.w_pos - 1
-            if w_pos < 1 or w_pos >= n_v - 1:
-                return False
-        else:
-            if e.w_pos < 1 or e.w_pos >= n_w:
-                return False
-    elif e.type == ExchangeType.Exchange:
-        if e.v_pos <= 0 or e.v_pos >= n_v - 1:
-            return False
-        elif e.w_pos <= 0 or e.w_pos >= n_w - 1:
-            return False
-    return True
-
-def apply_exchange(e: Exchange):
-    if e.type == ExchangeType.TwoOpt:
-        if e.v_route is e.w_route:
-            return
-        v_pf = e.v_route.route._customers[:e.v_pos + 1]
-        v_sf = e.v_route.route._customers[e.v_pos + 1:]
-        w_pf = e.w_route.route._customers[:e.w_pos + 1]
-        w_sf = e.w_route.route._customers[e.w_pos + 1:]
-        e.v_route.route._customers = v_pf + w_sf
-        e.w_route.route._customers = w_pf + v_sf
-    elif e.type == ExchangeType.OutRelocate:
-        w_pos = e.w_pos
-        if e.v_route is e.w_route and e.v_pos < e.w_pos:
-            w_pos = e.w_pos - 1
-        v = e.v_route.route._customers.pop(e.v_pos)
-        e.w_route.route._customers.insert(w_pos, v)
-    elif e.type == ExchangeType.Exchange:
-        e.v_route.route._customers[e.v_pos], e.w_route.route._customers[e.w_pos] = \
-        e.w_route.route._customers[e.w_pos], e.v_route.route._customers[e.v_pos]
-    e.v_route.recalc(e.v_route.route)
-    e.w_route.recalc(e.w_route.route)
-
-def exchange_penalty_delta(e: Exchange, alpha, beta):
-    if e.type == ExchangeType.TwoOpt:
-        return e.v_route.two_opt_penalty_delta(e.v_pos, e.w_route, e.w_pos, alpha, beta)
-    elif e.type == ExchangeType.OutRelocate:
-        return e.v_route.out_relocate_penalty_delta(e.v_pos, e.w_route, e.w_pos, alpha, beta)
-    elif e.type == ExchangeType.Exchange:
-        return e.v_route.exchange_penalty_delta(e.v_pos, e.w_route, e.w_pos, alpha, beta)
+def exchanges(v: 'CustomerWrapper', w: 'CustomerWrapper'):
+    return list(filter(lambda x: x.appliable(), [
+        Exchange(v.prev(), w, ExchangeType.TwoOpt),
+        Exchange(v, w.prev(), ExchangeType.TwoOpt),
+        Exchange(v, w, ExchangeType.OutRelocate),
+        Exchange(v, w.next(), ExchangeType.OutRelocate),
+        Exchange(v, w.prev(), ExchangeType.Exchange),
+        Exchange(v, w.next(), ExchangeType.Exchange),
+    ]))
