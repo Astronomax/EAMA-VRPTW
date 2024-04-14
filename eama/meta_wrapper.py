@@ -36,7 +36,6 @@ class RouteWrapper:
     def insert(self, index, value: 'CustomerWrapper'):
         assert value.ejected()
         i = index.node() if isinstance(index, CustomerWrapper) else index
-        #print(i)
         value._index = CustomerIndex(self, self._route.insert(i, value))
 
     def eject(self, value: 'CustomerWrapper'):
@@ -185,9 +184,6 @@ class MetaWrapper:
                             yield e
 
     def feasible(self):
-        for route in self._routes:
-            route._pc.update()
-            route._dc.update()
         return all([route.feasible() for route in self._routes])
     
     def completed(self):
@@ -198,13 +194,8 @@ class MetaWrapper:
         if currently_ejected_node is not None:
             customers.extend([currently_ejected_node.number])
         if len(customers) != len(set(customers)):
-            assert False
             return False
-        if len(set(customers)) < len(self.problem.customers) - 1:
-            assert False
-            return False
-        if len(set(customers)) > len(self.problem.customers) - 1:
-            assert False
+        if len(set(customers)) != len(self.problem.customers) - 1:
             return False
         return True
     

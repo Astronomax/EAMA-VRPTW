@@ -15,6 +15,21 @@ from multiprocessing import cpu_count
 import time
 
 
+class Colors:
+    RESET = '\033[0m'
+    RED = '\033[91m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    BLUE = '\033[94m'
+    PURPLE = '\033[95m'
+    CYAN = '\033[96m'
+    WHITE = '\033[97m'
+
+
+class BreakLoop(Exception):
+    pass
+
+
 @dataclass
 class RMHSettings:
     n_near: int = 100
@@ -68,14 +83,17 @@ class EAMA:
         assert meta_wrapper.valid(v)
 
         for insertion in insertions(v, meta_wrapper=meta_wrapper):
+            if time.time() > deadline:
+                raise TimeoutError()
+
             if insertion.feasible():
                 insertion.apply()
                 assert meta_wrapper.feasible()
                 if self.debug:
-                    print("'insert_feasible' completed successfully")
+                    print(Colors.GREEN + "'insert_feasible' completed successfully" + Colors.RESET)
                 return True
         if self.debug:
-            print("'insert_feasible' failed")
+            print(Colors.RED + "'insert_feasible' failed" + Colors.RESET)
         return False
 
     def _squeeze(self, meta_wrapper: MetaWrapper, v: CustomerWrapper, state: RMHState, settings: RMHSettings, deadline: float = inf):
@@ -88,7 +106,6 @@ class EAMA:
         # insert such that penalty is minimum
         insertion=min(list(insertions(v, meta_wrapper=meta_wrapper)),\
             key=lambda e: e.penalty_delta(state.alpha, state.beta))
-        print(f"'squeeze': insertion penalty {insertion.penalty_delta(state.alpha, state.beta)}")
         insertion.apply()
         _, infeasible = self._split_by_feasibility(meta_wrapper)
 
@@ -98,27 +115,36 @@ class EAMA:
             v_route = infeasible.pop(randint(0, len(infeasible) - 1))
             opt_exchange = None
             opt_exchange_delta = inf
-            for v in v_route:
-                for exchange in meta_wrapper.N_near(settings.n_near, v=v):
-                    exchange_delta = exchange.penalty_delta(state.alpha, state.beta)
-                    if exchange_delta < opt_exchange_delta:
-                        opt_exchange = exchange
-                        opt_exchange_delta = exchange_delta
+            v_route_penalty = v_route.get_penalty(state.alpha, state.beta)
+            try:
+                for v in v_route:
+                    for exchange in meta_wrapper.N_near(settings.n_near, v=v):
+                        if time.time() > deadline:
+                            raise TimeoutError()
+                        exchange_delta = exchange.penalty_delta(state.alpha, state.beta)
+                        if exchange_delta < opt_exchange_delta:
+                            opt_exchange = exchange
+                            opt_exchange_delta = exchange_delta
+                            if exchange_delta >= v_route_penalty - 1e-5:
+                                raise BreakLoop
+            except BreakLoop:
+                pass
+
             if self.debug:
-                print(f'\'squeeze\': opt exchange delta: {opt_exchange_delta}')
-            if opt_exchange_delta > -1e-5:
-                #if meta_wrapper.get_penalty(1, -1) < 0:
-                #    state.beta *= 0.99
-                #else:
-                #    state.beta /= 0.99
+                print(f"'squeeze': opt exchange delta: {opt_exchange_delta}")
+            if not opt_exchange or opt_exchange_delta > -1e-5:
+                if meta_wrapper.get_penalty(1, -1) < 0:
+                    state.beta *= 0.99
+                else:
+                    state.beta /= 0.99
                 if self.debug:
-                    print("'squeeze' failed")
+                    print(Colors.RED + "'squeeze' failed" + Colors.RESET)
                     print(f"'squeeze': beta after correction: {state.beta}")
                 return False, None
             opt_exchange.apply()
             _, infeasible = self._split_by_feasibility(meta_wrapper)
         if self.debug:
-            print("'squeeze' completed successfully")
+            print(Colors.GREEN + "'squeeze' completed successfully" + Colors.RESET)
         assert meta_wrapper.feasible()
         assert meta_wrapper.valid()
         return True, meta_wrapper
@@ -135,22 +161,15 @@ class EAMA:
         for route in meta_wrapper._routes:
             assert v.ejected()
             for insertion in insertions(v, route=route):
+                if time.time() > deadline:
+                    raise TimeoutError()
+
                 assert v.ejected()
                 insertion.apply()
                 assert not v.ejected()
 
                 assert not insertion._index.route().feasible()
                 for ejection, p_sum in feasible_ejections(route, self.p, settings.k_max, p_best):
-                    '''
-                    routes = [[v._customer for v in route] for route in meta_wrapper._routes]
-                    solution_copy = MetaWrapper(meta_wrapper.problem, routes)
-                    route_copy = solution_copy._routes[ind]
-                    assert not route_copy.feasible()
-                    _ejection = [v.number for v in ejection._ejection]
-                    _ejection = list(filter(lambda v: v.number in _ejection, route_copy))
-                    Ejection(solution_copy, _ejection, 0, 0, 0).apply()
-                    assert route_copy.feasible()
-                    '''
                     if p_sum < p_best or (p_sum == p_best and len(ejection._ejection) < len(opt_insertion_ejection[1]._ejection)):
                         opt_insertion_ejection = (insertion, ejection)
                         p_best = p_sum
@@ -159,10 +178,11 @@ class EAMA:
                 assert v.ejected()
                 route._pc.update()
                 route._dc.update()
-                
+        if self.debug:
+            print(f"'insert_eject': opt insertion-ejection p_sum: {p_best}")
         if opt_insertion_ejection == None:
             if self.debug:
-                print("'insert_eject' failed")
+                print(Colors.RED + "'insert_eject' failed" + Colors.RESET)
             return False
         insertion, ejection = opt_insertion_ejection
         route = insertion._index.route()
@@ -172,15 +192,17 @@ class EAMA:
         assert route.feasible()
         assert meta_wrapper.feasible()
         if self.debug:
-            print("'insert_eject' completed successfully")
+            print(Colors.GREEN + "'insert_eject' completed successfully" + Colors.RESET)
         return True 
 
-    def _perturb(self, meta_wrapper: MetaWrapper, i_rand: int, n_near: int):
+    def _perturb(self, meta_wrapper: MetaWrapper, i_rand: int, n_near: int, deadline: float = inf):
         assert meta_wrapper.feasible()
         if self.debug:
             print("'perturb' started")
         exchanges_cnt = 0
         for _ in range(i_rand):
+            if time.time() > deadline:
+                raise TimeoutError()
             e = choice(list(meta_wrapper.N_near(n_near)))
             if e.feasible():
                 e.apply()
@@ -188,7 +210,7 @@ class EAMA:
                 assert meta_wrapper.feasible()
         if self.debug:
             print(f"'perturb': applied {exchanges_cnt} exchanges")
-            print("'perturb' completed successfully")
+            print(Colors.GREEN + "'perturb' completed successfully" + Colors.RESET)
 
     def _delete_route(self, meta_wrapper: MetaWrapper, state: RMHState, settings: RMHSettings, deadline: float = inf):
         if self.debug:
@@ -208,6 +230,8 @@ class EAMA:
 
         # trying to empty ejection_pool
         while len(meta_wrapper._ejection_pool) > 0:
+            if time.time() > deadline:
+                raise TimeoutError()
             assert meta_wrapper.feasible()
             assert meta_wrapper.valid()
             if self.debug:
@@ -215,12 +239,12 @@ class EAMA:
             # remove v from EP with the LIFO strategy
             v = meta_wrapper._ejection_pool.pop()
             assert v.ejected()
-            if self._insert_feasible(meta_wrapper, v):
+            if self._insert_feasible(meta_wrapper, v, deadline):
                 assert meta_wrapper.feasible()
                 assert meta_wrapper.valid()
                 continue
             assert v in meta_wrapper.nearest
-            ok, result = self._squeeze(meta_wrapper, v, state, settings)
+            ok, result = self._squeeze(meta_wrapper, v, state, settings, deadline)
             if ok:
                 assert result.feasible()
                 assert result.valid()
@@ -228,15 +252,15 @@ class EAMA:
                 continue
             meta_wrapper.activate()
             v._index = None
-            if self._insert_eject(meta_wrapper, v, settings):
+            if self._insert_eject(meta_wrapper, v, settings, deadline):
                 assert meta_wrapper.feasible()
-                self._perturb(meta_wrapper, settings.i_rand, settings.n_near)
+                self._perturb(meta_wrapper, settings.i_rand, settings.n_near, deadline)
                 continue
             if self.debug:
-                print("'delete_route' failed")
+                print(Colors.RED + "'delete_route' failed" + Colors.RESET)
             return False, None
         if self.debug:
-            print("'delete_route' completed successfully")
+            print(Colors.GREEN + "'delete_route' completed successfully" + Colors.RESET)
         return True, meta_wrapper
 
     # determine the minimum possible number of routes
@@ -246,22 +270,31 @@ class EAMA:
         meta_wrapper = MetaWrapper(self.problem)
         straight_lower_bound = ceil(sum([c.demand for c in self.problem.customers]) / self.problem.vehicle_capacity)
         lower_bound = max(settings.lower_bound, straight_lower_bound)
-        # try to reduce number of routes
-        while len(meta_wrapper._routes) > lower_bound:
-            assert meta_wrapper.feasible()
-            assert meta_wrapper.valid()
-            if self.debug:
-                print(f'\'RM heuristic\': routes number: {len(meta_wrapper._routes)}')
-            ok, result = self._delete_route(meta_wrapper, state, settings)
-            if not ok:
-                meta_wrapper.activate()
-                break
-            meta_wrapper = result
+
+        deadline = time.time() + settings.t_max
+        try:
+            # try to reduce number of routes
+            while len(meta_wrapper._routes) > lower_bound:
+                if time.time() > deadline:
+                    raise TimeoutError()
+                assert meta_wrapper.feasible()
+                assert meta_wrapper.valid()
+                if self.debug:
+                    print(Colors.PURPLE + f"'RM heuristic': routes number: {len(meta_wrapper._routes)}" + Colors.RESET)
+                ok, result = self._delete_route(meta_wrapper, state, settings, deadline)
+                if not ok:
+                    meta_wrapper.activate()
+                    break
+                meta_wrapper = result
+        except TimeoutError as _:
+            meta_wrapper.activate()
+        if self.debug:
+            print(Colors.GREEN + "'powerful_route_minimization_heuristic' completed successfully" + Colors.RESET)
         return meta_wrapper
 
     def generate_initial_population(self):
         if self.debug:
-            print('\'generate_initial_population\' started') 
+            print("'generate_initial_population' started")
         initial_population = [self.powerful_route_minimization_heuristic(self.rmh_settings)]
         rmh_settings = self.rmh_settings
         rmh_settings.t_max = inf
@@ -275,11 +308,11 @@ class EAMA:
         executor.shutdown(wait=True, cancel_futures=True)
         initial_population.extend([future.result() for future in futures if future.done()])
         if self.debug:
-            print(f'\'generate_initial_population\': {len(initial_population)} solutions were generated honestly')
-            print(f'\'generate_initial_population\': {n_pop - len(initial_population)} duplicates have been added')
+            print(f"'generate_initial_population': {len(initial_population)} solutions were generated honestly")
+            print(f"'generate_initial_population': {n_pop - len(initial_population)} duplicates have been added")
         initial_population.extend([copy(initial_population[-1]) for _ in range(n_pop - len(initial_population))])
         if self.debug:
-            print('\'generate_initial_population\' completed successfully') 
+            print(Colors.GREEN + "'generate_initial_population' completed successfully" + Colors.RESET)
         return initial_population
 
     # edge assembly crossover type

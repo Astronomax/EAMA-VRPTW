@@ -17,12 +17,13 @@ if __name__ == '__main__':
     start_time = time.time()
     rmh_settings = RMHSettings()
     rmh_settings.i_rand = 0
-    rmh_settings.lower_bound = 14
+    rmh_settings.t_max = 120
     gip_settings = GIPSettings()
     eama_settings = EAMASettings()
     eama = EAMA(problem, rmh_settings=rmh_settings, gip_settings=gip_settings, eama_settings=eama_settings, debug=True)
     result = eama.powerful_route_minimization_heuristic(rmh_settings)
     s = result.get_solution()
     print(f'elapsed time: {time.time() - start_time}')
+    print(f'routes: {len(s)}')
     with open(f"""solutions/{args.problem.split(os.sep)[-1].split(".")[0]}.sol""", 'w') as f:
         f.write(problem.print_canonical(s))
