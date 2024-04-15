@@ -1,4 +1,4 @@
-from eama.meta_wrapper import MetaWrapper
+from eama.meta_wrapper import MetaWrapper, CustomerWrapper
 from eama.structure import Problem, Customer
 from random import randint
 
@@ -12,8 +12,8 @@ def generate_random_customer(number):
     s = randint(0, 20)
     return Customer(number, x, y, demand, e, l, s)
 
-def generate_random_problem():
-    customers_num = randint(2, 100)
+def generate_random_problem(max_n: int = 100):
+    customers_num = randint(2, max_n)
     customers = [generate_random_customer(i) for i in range(customers_num)]
     customers[0].s = 0
     customers[0].demand = 0
@@ -27,4 +27,8 @@ def generate_random_solution(problem: Problem):
         route = customers[:route_size]
         routes.append(route)
         customers = customers[route_size:]
-    return MetaWrapper(problem, routes)
+    solution = MetaWrapper(problem, routes)
+    for nearest in solution.nearest.values():
+        for v in nearest:
+            assert isinstance(v, CustomerWrapper)
+    return solution

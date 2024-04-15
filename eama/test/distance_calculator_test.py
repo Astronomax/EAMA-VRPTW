@@ -1,6 +1,6 @@
 from eama.routelist import RouteList
 from eama.meta_wrapper import RouteWrapper, CustomerWrapper
-from eama.exchange import Exchange, ExchangeType
+from eama.exchange import ExchangeFast, ExchangeType
 from eama.insertion import Insertion
 from eama.distance_calculator import DistanceCalculator
 from eama.structure import Problem, Customer
@@ -18,7 +18,7 @@ def random_exchanges_test_factory(num_tests=100):
             v = choice(list(choice(solution._routes)))
             w = choice(list(choice(solution._routes)))
             type = choice(list(ExchangeType))
-            e = Exchange(v, w, type)
+            e = ExchangeFast(v, w, type)
             if e.appliable():
                 v_route = v.route()
                 w_route = w.route()

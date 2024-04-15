@@ -1,6 +1,6 @@
 from eama.routelist import RouteList
 from eama.meta_wrapper import RouteWrapper, CustomerWrapper
-from eama.exchange import Exchange, ExchangeType
+from eama.exchange import ExchangeFast, ExchangeSlow, ExchangeType
 from eama.insertion import Insertion
 from eama.penalty_calculator import PenaltyCalculator
 from eama.structure import Problem, Customer
@@ -18,7 +18,7 @@ def random_exchanges_test_factory(num_tests=100):
             v = choice(list(choice(solution._routes)._route.head.iter())).value
             w = choice(list(choice(solution._routes)._route.head.iter())).value
             type = choice(list(ExchangeType))
-            e = Exchange(v, w, type)
+            e = ExchangeFast(v, w, type)
             if e.appliable():
                 v_route = v.route()
                 w_route = w.route()
@@ -38,7 +38,6 @@ def random_exchanges_test_factory(num_tests=100):
                     tw_target /= 2
                 self.assertAlmostEqual(c_delta, c_target, delta=1e-4)
                 self.assertAlmostEqual(tw_delta, tw_target, delta=1e-4)
-
     return test_method
 
 def random_insertions_test_factory(num_tests=100):
@@ -65,7 +64,6 @@ def random_insertions_test_factory(num_tests=100):
                 tw_target = v.pc().get_penalty(0, 1) - tw_before_exchange
                 self.assertAlmostEqual(c_delta, c_target, delta=1e-4)
                 self.assertAlmostEqual(tw_delta, tw_target, delta=1e-4)
-
     return test_method
 
 def random_ejections_test_factory(num_tests=100):
@@ -87,7 +85,31 @@ def random_ejections_test_factory(num_tests=100):
             tw_target = route._pc.get_penalty(0, 1) - tw_before_exchange
             self.assertAlmostEqual(c_delta, c_target, delta=1e-4)
             self.assertAlmostEqual(tw_delta, tw_target, delta=1e-4)
+    return test_method
 
+def random_slow_exchanges_test_factory(num_tests=100):
+    def test_method(self):
+        for _ in range(num_tests):
+            problem = generate_random_problem(10)
+            solution = generate_random_solution(problem)
+
+            for e in solution.N_near(100):
+                if isinstance(e, ExchangeSlow):
+                    self.assertTrue(e._v.route() is e._w.route())
+                    route = e._v.route()
+                    c_delta = e.penalty_delta(1, 0)
+                    tw_delta = e.penalty_delta(0, 1)
+                    solution_copy = solution.inherit()
+                    route_copy = e._v.route()
+                    assert route is not route_copy
+                    c_before_exchange = route_copy._pc.get_penalty(1, 0)
+                    tw_before_exchange = route_copy._pc.get_penalty(0, 1)
+                    self.assertTrue(e.apply())
+                    c_target = route_copy._pc.get_penalty(1, 0) - c_before_exchange
+                    tw_target = route_copy._pc.get_penalty(0, 1) - tw_before_exchange
+                    self.assertAlmostEqual(c_delta, c_target, delta=1e-4)
+                    self.assertAlmostEqual(tw_delta, tw_target, delta=1e-4)
+                    solution.activate()
     return test_method
 
 
@@ -149,3 +171,4 @@ class TestPenaltyCalculator(unittest.TestCase):
     test_random_exchanges = random_exchanges_test_factory(100)
     test_random_insertions = random_insertions_test_factory(100)
     test_random_ejections = random_ejections_test_factory(100)
+    test_random_slow_exchanges = random_slow_exchanges_test_factory(10)

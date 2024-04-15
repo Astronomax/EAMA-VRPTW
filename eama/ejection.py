@@ -38,6 +38,9 @@ class Ejection(Modification):
             route._pc.update()
             route._dc.update()
 
+    def __copy__(self):
+        return Ejection(self._meta_wrapper, self._ejection.copy(), self._c_delta, self._tw_delta, self._dist_delta)
+
 
 # iterate over feasible ejections lexicographically
 def feasible_ejections(route: 'RouteWrapper', p: list[int], k_max: int, p_best: int = inf):
@@ -107,7 +110,7 @@ def feasible_ejections(route: 'RouteWrapper', p: list[int], k_max: int, p_best: 
         if a_quote[j] <= route[j].l and a[j] <= pc.z[j] and pc.tw_sf[j] == 0\
             and total_demand <= meta_wrapper.problem.vehicle_capacity:
             dist_delta = dist_pf[j] + dc._dist_sf[j] - dist_before
-            yield Ejection(meta_wrapper, ejection.copy(), c_delta, tw_delta, dist_delta), p_sum
+            yield Ejection(meta_wrapper, ejection, c_delta, tw_delta, dist_delta), p_sum
 
         if ejected[-1] < n - 2 and len(ejected) < k_max:
             incr_k()

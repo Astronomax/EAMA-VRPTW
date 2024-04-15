@@ -3,6 +3,7 @@ from eama import *
 import argparse
 import os
 import time
+import cProfile
 
 
 def arguments() -> argparse.Namespace:
@@ -17,11 +18,13 @@ if __name__ == '__main__':
     start_time = time.time()
     rmh_settings = RMHSettings()
     rmh_settings.i_rand = 0
-    rmh_settings.t_max = 120
+    rmh_settings.t_max = 10 * 120
+    rmh_settings.lower_bound = 7
     gip_settings = GIPSettings()
     eama_settings = EAMASettings()
-    eama = EAMA(problem, rmh_settings=rmh_settings, gip_settings=gip_settings, eama_settings=eama_settings, debug=True)
+    eama = EAMA(problem, rmh_settings=rmh_settings, gip_settings=gip_settings, eama_settings=eama_settings, debug=False)
     result = eama.powerful_route_minimization_heuristic(rmh_settings)
+    #cProfile.runctx('eama.powerful_route_minimization_heuristic(rmh_settings)', globals=globals(), locals={'rmh_settings': rmh_settings})
     s = result.get_solution()
     print(f'elapsed time: {time.time() - start_time}')
     print(f'routes: {len(s)}')

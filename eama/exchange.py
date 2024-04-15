@@ -9,7 +9,7 @@ class ExchangeType(Enum):
     Exchange = 3
 
 
-class Exchange(Modification):
+class Exchange:
     def __init__(self, v: 'ListNode', w: 'ListNode', type: ExchangeType):
         assert v is not None and w is not None 
         self._v = v
@@ -55,28 +55,6 @@ class Exchange(Modification):
         except Exception as _:
             return False
         return True  
-
-    def penalty_delta(self, alpha, beta):
-        assert self.appliable()
-        from eama.penalty_calculator import PenaltyCalculator
-        if self._type == ExchangeType.TwoOpt:
-            return PenaltyCalculator.two_opt_penalty_delta(self._v, self._w, alpha, beta)
-        elif self._type == ExchangeType.OutRelocate:
-            return PenaltyCalculator.out_relocate_penalty_delta(self._v, self._w, alpha, beta)
-        elif self._type == ExchangeType.Exchange:
-            return PenaltyCalculator.exchange_penalty_delta(self._v, self._w, alpha, beta)
-        assert False
-
-    def distance_delta(self):
-        assert self.appliable()
-        from eama.distance_calculator import DistanceCalculator
-        if self._type == ExchangeType.TwoOpt:
-            return DistanceCalculator.two_opt_distance_delta(self._v, self._w)
-        elif self._type == ExchangeType.OutRelocate:
-            return DistanceCalculator.out_relocate_distance_delta(self._v, self._w)
-        elif self._type == ExchangeType.Exchange:
-            return DistanceCalculator.exchange_distance_delta(self._v, self._w)
-        assert False
 
     def apply(self):
         if not self.appliable():
@@ -139,6 +117,68 @@ class Exchange(Modification):
             w_route._pc.update()
             w_route._dc.update()
         return True
+
+
+class ExchangeFast(Modification):
+    def __init__(self, v: 'ListNode', w: 'ListNode', type: ExchangeType):
+        assert v is not None and w is not None
+        self._v = v
+        self._w = w
+        self._type = type
+
+    def appliable(self):
+        return Exchange(self._v, self._w, self._type).appliable()
+
+    def penalty_delta(self, alpha, beta):
+        assert self.appliable()
+        from eama.penalty_calculator import PenaltyCalculator
+        if self._type == ExchangeType.TwoOpt:
+            return PenaltyCalculator.two_opt_penalty_delta(self._v, self._w, alpha, beta)
+        elif self._type == ExchangeType.OutRelocate:
+            return PenaltyCalculator.out_relocate_penalty_delta(self._v, self._w, alpha, beta)
+        elif self._type == ExchangeType.Exchange:
+            return PenaltyCalculator.exchange_penalty_delta(self._v, self._w, alpha, beta)
+        assert False
+
+    def distance_delta(self):
+        assert self.appliable()
+        from eama.distance_calculator import DistanceCalculator
+        if self._type == ExchangeType.TwoOpt:
+            return DistanceCalculator.two_opt_distance_delta(self._v, self._w)
+        elif self._type == ExchangeType.OutRelocate:
+            return DistanceCalculator.out_relocate_distance_delta(self._v, self._w)
+        elif self._type == ExchangeType.Exchange:
+            return DistanceCalculator.exchange_distance_delta(self._v, self._w)
+        assert False
+
+    def apply(self):
+        return Exchange(self._v, self._w, self._type).apply()
+
+    def feasible(self):
+        return (self.penalty_delta(1, 1) == 0)
+
+
+class ExchangeSlow(Modification):
+    def __init__(self, v: 'ListNode', w: 'ListNode', type: ExchangeType, c_delta: float, tw_delta: float, dist_delta: float):
+        assert v is not None and w is not None 
+        self._v = v
+        self._w = w
+        self._type = type
+        self._c_delta = c_delta
+        self._tw_delta = tw_delta
+        self._dist_delta = dist_delta
+
+    def appliable(self):
+        return Exchange(self._v, self._w, self._type).appliable()
+
+    def penalty_delta(self, alpha, beta):
+        return alpha * self._c_delta + beta * self._tw_delta
+
+    def distance_delta(self):
+        return self._dist_delta
+
+    def apply(self):
+        return Exchange(self._v, self._w, self._type).apply()
     
     def feasible(self):
         return (self.penalty_delta(1, 1) == 0)
@@ -146,10 +186,10 @@ class Exchange(Modification):
 
 def exchanges(v: 'CustomerWrapper', w: 'CustomerWrapper'):
     return list(filter(lambda x: x.appliable(), [
-        Exchange(v.prev(), w, ExchangeType.TwoOpt),
-        Exchange(v, w.prev(), ExchangeType.TwoOpt),
-        Exchange(v, w, ExchangeType.OutRelocate),
-        Exchange(v, w.next(), ExchangeType.OutRelocate),
-        Exchange(v, w.prev(), ExchangeType.Exchange),
-        Exchange(v, w.next(), ExchangeType.Exchange),
+        ExchangeFast(v.prev(), w, ExchangeType.TwoOpt),
+        ExchangeFast(v, w.prev(), ExchangeType.TwoOpt),
+        ExchangeFast(v, w, ExchangeType.OutRelocate),
+        ExchangeFast(v, w.next(), ExchangeType.OutRelocate),
+        ExchangeFast(v, w.prev(), ExchangeType.Exchange),
+        ExchangeFast(v, w.next(), ExchangeType.Exchange),
     ]))
