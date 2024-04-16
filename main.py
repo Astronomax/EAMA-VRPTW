@@ -22,7 +22,7 @@ if __name__ == '__main__':
     rmh_settings.lower_bound = 6
     gip_settings = GIPSettings()
     eama_settings = EAMASettings()
-    eama = EAMA(problem, rmh_settings=rmh_settings, gip_settings=gip_settings, eama_settings=eama_settings, debug=False)
+    eama = EAMA(problem, rmh_settings=rmh_settings, gip_settings=gip_settings, eama_settings=eama_settings, debug=True)
     result = eama.powerful_route_minimization_heuristic(rmh_settings)
     #cProfile.runctx('eama.powerful_route_minimization_heuristic(rmh_settings)', globals=globals(), locals={'rmh_settings': rmh_settings})
     s = result.get_solution()

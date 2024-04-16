@@ -44,6 +44,8 @@ class PenaltyCalculator:
         # capacity penalty precalc
         self.demand_pf = list(accumulate(route, lambda pf, c: pf + c.demand, initial=0))[1:]
         self.demand_sf = list(accumulate(route[::-1], lambda pf, c: pf + c.demand, initial=0))[::-1][:-1]
+        
+        assert abs(self.tw_pf[-1] - self.tw_sf[0]) < 1e-4
 
     def get_penalty(self, alpha, beta):
         p_c = max(self.demand_pf[-1] - self._problem.vehicle_capacity, 0)

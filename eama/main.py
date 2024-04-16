@@ -205,9 +205,11 @@ class EAMA:
                 assert not v.ejected()
                 assert not insertion._index.route().feasible()
                 for ejection, p_sum in feasible_ejections(route, self.p, settings.k_max, p_best):
-                    if p_sum < p_best or (p_sum == p_best and len(ejection._ejection) < len(opt_insertion_ejection[1]._ejection)):
-                        opt_insertion_ejection = (insertion, copy(ejection))
-                        p_best = p_sum
+                    #print(p_sum, p_best)
+                    assert p_sum < p_best
+                    #if p_sum < p_best or (p_sum == p_best and len(ejection._ejection) < len(opt_insertion_ejection[1]._ejection)):
+                    opt_insertion_ejection = (insertion, copy(ejection))
+                    p_best = p_sum
                 route.eject(v, True)
                 assert v.ejected()
         if self.debug:

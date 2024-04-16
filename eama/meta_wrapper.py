@@ -227,15 +227,6 @@ class MetaWrapper:
                     if e.appliable():
                         yield e
 
-                    '''
-                    e = ExchangeFast(v, w.prev(), ExchangeType.Exchange)
-                    if e.appliable():
-                        yield e
-                    e = ExchangeFast(v, w.next(), ExchangeType.Exchange)
-                    if e.appliable():
-                        yield e
-                    '''
-
     # \mathcal{N}_near(v, \sigma)
     def N_random(self, v: CustomerWrapper = None, route: RouteWrapper = None):
         if route is not None:
@@ -278,16 +269,14 @@ class MetaWrapper:
                     c_delta = v_eject_c_delta + v_route_copy._pc.get_insert_delta(w_copy, v_copy, 1, 0)
                     tw_delta = v_eject_tw_delta + v_route_copy._pc.get_insert_delta(w_copy, v_copy, 0, 1)
                     dist_delta = v_eject_dist_delta + v_route_copy._dc.get_insert_delta(w_copy, v_copy)
-                    e = ExchangeSlow(v, w, ExchangeType.OutRelocate, c_delta, tw_delta, dist_delta)
-                    
+                    e = ExchangeSlow(v, w, ExchangeType.OutRelocate, c_delta, tw_delta, dist_delta)             
                     if e.appliable() and e.feasible():
                         return e
 
                     c_delta = v_eject_c_delta + v_route_copy._pc.get_insert_delta(w_copy.next(), v_copy, 1, 0)
                     tw_delta = v_eject_tw_delta + v_route_copy._pc.get_insert_delta(w_copy.next(), v_copy, 0, 1)
                     dist_delta = v_eject_dist_delta + v_route_copy._dc.get_insert_delta(w_copy.next(), v_copy)
-                    e = ExchangeSlow(v, w.next(), ExchangeType.OutRelocate, c_delta, tw_delta, dist_delta)    
-                    
+                    e = ExchangeSlow(v, w.next(), ExchangeType.OutRelocate, c_delta, tw_delta, dist_delta)                
                     if e.appliable() and e.feasible():
                         return e
         return None

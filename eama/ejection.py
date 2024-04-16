@@ -43,7 +43,7 @@ class Ejection(Modification):
 
 
 # iterate over feasible ejections lexicographically
-def feasible_ejections(route: 'RouteWrapper', p: list[int], k_max: int, p_best: int = inf):
+def feasible_ejections(route: 'RouteWrapper', p: list[int], k_max: int, p_best = inf):
     assert route._meta_wrapper is not None
     meta_wrapper = route._meta_wrapper
     pc = route._pc
@@ -107,12 +107,14 @@ def feasible_ejections(route: 'RouteWrapper', p: list[int], k_max: int, p_best: 
 
     while True:
         j = ejected[-1] + 1
-        if a_quote[j] <= route[j].l and a[j] <= pc.z[j] and pc.tw_sf[j] == 0\
+        if p_sum < p_best and a_quote[j] <= route[j].l and a[j] <= pc.z[j] and pc.tw_sf[j] == 0\
             and total_demand <= meta_wrapper.problem.vehicle_capacity:
             dist_delta = dist_pf[j] + dc._dist_sf[j] - dist_before
             yield Ejection(meta_wrapper, ejection, c_delta, tw_delta, dist_delta), p_sum
 
-        if ejected[-1] < n - 2 and len(ejected) < k_max:
+        p_best = min(p_sum, p_best)
+
+        if p_sum < p_best and ejected[-1] < n - 2 and len(ejected) < k_max:
             incr_k()
         else:
             if ejected[-1] >= n - 2:
@@ -122,8 +124,8 @@ def feasible_ejections(route: 'RouteWrapper', p: list[int], k_max: int, p_best: 
             prev = ejected[-1]
             incr_last()
             while p_sum >= p_best or route[prev].l < a_quote[prev] or\
-                route[prev].l < a_quote[prev] or\
-                (len(ejection) > 1 and a[prev] == pc.a[prev] and q_quote <= meta_wrapper.problem.vehicle_capacity):
+                route[prev].l < a_quote[prev]:# or\
+                #(len(ejection) > 1 and a[prev] == pc.a[prev] and q_quote <= meta_wrapper.problem.vehicle_capacity):
                 if len(ejected) == 1:
                     return
                 backtrack()
