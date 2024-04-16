@@ -134,7 +134,7 @@ class EAMA:
                         if exchange_delta < opt_exchange_delta:
                             opt_exchange = exchange
                             opt_exchange_delta = exchange_delta
-                            if exchange_delta <= -v_route_penalty + 1e-5:
+                            if exchange_delta <= -v_route_penalty:# + 1e-5:
                                 raise BreakLoop
             except BreakLoop:
                 pass
@@ -235,6 +235,7 @@ class EAMA:
         if self.debug:
             self._debug_print("started", Colors.RESET)
             #print("'perturb': started")
+
         for _ in range(i_rand):
             if time.time() > deadline:
                 raise TimeoutError()

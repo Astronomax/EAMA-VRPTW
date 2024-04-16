@@ -80,6 +80,16 @@ class Exchange:
                 node.value._index._route = v_route
             for node in self._w.node().next.iter():
                 node.value._index._route = w_route
+            v_route._route.length = 0
+            for node in self._v.node().next.iter():
+                if node.tail():
+                    break
+                v_route._route.length += 1
+            w_route._route.length = 0    
+            for node in self._w.node().next.iter():
+                if node.tail():
+                    break
+                w_route._route.length += 1
         elif self._type == ExchangeType.OutRelocate:
             assert not self._w.ejected()
             assert not self._v.node().head()

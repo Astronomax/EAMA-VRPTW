@@ -4,7 +4,7 @@ from eama.penalty_calculator import PenaltyCalculator
 from eama.distance_calculator import DistanceCalculator
 from eama.exchange import exchanges, ExchangeSlow, ExchangeFast, ExchangeType
 
-from random import shuffle
+from random import shuffle, randint
 from copy import copy
 
 
@@ -155,11 +155,11 @@ class MetaWrapper:
         for v in result._ejection_pool:
             v._index = None
 
-        for route in result._routes:
-            for node in route._route.head.iter():
-                assert node.value.route() is route
-                assert node.value in node.value.pc()._index
-                assert node.value in route._pc._index
+        #for route in result._routes:
+        #    for node in route._route.head.iter():
+        #        assert node.value.route() is route
+        #        assert node.value in node.value.pc()._index
+        #        assert node.value in route._pc._index
 
         return result
 
@@ -202,39 +202,39 @@ class MetaWrapper:
             v_route_copy.eject(v_copy, True)
 
             for w in self.nearest[v][:n_near]:
-                if w.ejected():
+                if v is w or w.ejected():
                     continue
                 if v.route() is not w.route(): # inter-route exchage
                     for e in exchanges(v, w):
                         if e.appliable():
                             yield e
                 else: # intra-route exchange
-                    if v is not w:
-                        w_copy = cust_dict[w.number]
-                        assert not w_copy.ejected()
-                        # only Out-Relocate supported
-                        c_delta = v_eject_c_delta + v_route_copy._pc.get_insert_delta(w_copy, v_copy, 1, 0)
-                        tw_delta = v_eject_tw_delta + v_route_copy._pc.get_insert_delta(w_copy, v_copy, 0, 1)
-                        dist_delta = v_eject_dist_delta + v_route_copy._dc.get_insert_delta(w_copy, v_copy)
-                        e = ExchangeSlow(v, w, ExchangeType.OutRelocate, c_delta, tw_delta, dist_delta)
-                        if e.appliable():
-                            yield e
+                    #if v is not w:
+                    w_copy = cust_dict[w.number]
+                    assert not w_copy.ejected()
+                    # only Out-Relocate supported
+                    c_delta = v_eject_c_delta + v_route_copy._pc.get_insert_delta(w_copy, v_copy, 1, 0)
+                    tw_delta = v_eject_tw_delta + v_route_copy._pc.get_insert_delta(w_copy, v_copy, 0, 1)
+                    dist_delta = v_eject_dist_delta + v_route_copy._dc.get_insert_delta(w_copy, v_copy)
+                    e = ExchangeSlow(v, w, ExchangeType.OutRelocate, c_delta, tw_delta, dist_delta)
+                    if e.appliable():
+                        yield e
 
-                        c_delta = v_eject_c_delta + v_route_copy._pc.get_insert_delta(w_copy.next(), v_copy, 1, 0)
-                        tw_delta = v_eject_tw_delta + v_route_copy._pc.get_insert_delta(w_copy.next(), v_copy, 0, 1)
-                        dist_delta = v_eject_dist_delta + v_route_copy._dc.get_insert_delta(w_copy.next(), v_copy)
-                        e = ExchangeSlow(v, w.next(), ExchangeType.OutRelocate, c_delta, tw_delta, dist_delta)    
-                        if e.appliable():
-                            yield e
+                    c_delta = v_eject_c_delta + v_route_copy._pc.get_insert_delta(w_copy.next(), v_copy, 1, 0)
+                    tw_delta = v_eject_tw_delta + v_route_copy._pc.get_insert_delta(w_copy.next(), v_copy, 0, 1)
+                    dist_delta = v_eject_dist_delta + v_route_copy._dc.get_insert_delta(w_copy.next(), v_copy)
+                    e = ExchangeSlow(v, w.next(), ExchangeType.OutRelocate, c_delta, tw_delta, dist_delta)    
+                    if e.appliable():
+                        yield e
 
-                        '''
-                        e = ExchangeFast(v, w.prev(), ExchangeType.Exchange)
-                        if e.appliable():
-                            yield e
-                        e = ExchangeFast(v, w.next(), ExchangeType.Exchange)
-                        if e.appliable():
-                            yield e
-                        '''
+                    '''
+                    e = ExchangeFast(v, w.prev(), ExchangeType.Exchange)
+                    if e.appliable():
+                        yield e
+                    e = ExchangeFast(v, w.next(), ExchangeType.Exchange)
+                    if e.appliable():
+                        yield e
+                    '''
 
     # \mathcal{N}_near(v, \sigma)
     def N_random(self, v: CustomerWrapper = None, route: RouteWrapper = None):
@@ -246,8 +246,7 @@ class MetaWrapper:
         else:
             customers = [v for route in self._routes for v in route]
         shuffle(customers)
-        all_customers = [v for route in self._routes for v in route]
-        shuffle(all_customers)
+
         for v in customers:
             v_route = v.route()
 
@@ -262,8 +261,7 @@ class MetaWrapper:
             v_eject_dist_delta = v_route._dc.get_eject_delta(v)   
             v_route_copy.eject(v_copy, True)
 
-            #shuffle(all_customers)
-            for w in all_customers:
+            for w in self.nearest[v]:
                 if v is w or w.ejected():
                     continue
                 if v.route() is not w.route(): # inter-route exchage
@@ -273,11 +271,15 @@ class MetaWrapper:
                         if e.appliable() and e.feasible():
                             return e
                 else: # intra-route exchange
+                    w_copy = cust_dict[w.number]
+                    assert not w_copy.ejected()
+                    
                     # only Out-Relocate supported
                     c_delta = v_eject_c_delta + v_route_copy._pc.get_insert_delta(w_copy, v_copy, 1, 0)
                     tw_delta = v_eject_tw_delta + v_route_copy._pc.get_insert_delta(w_copy, v_copy, 0, 1)
                     dist_delta = v_eject_dist_delta + v_route_copy._dc.get_insert_delta(w_copy, v_copy)
                     e = ExchangeSlow(v, w, ExchangeType.OutRelocate, c_delta, tw_delta, dist_delta)
+                    
                     if e.appliable() and e.feasible():
                         return e
 
@@ -285,9 +287,11 @@ class MetaWrapper:
                     tw_delta = v_eject_tw_delta + v_route_copy._pc.get_insert_delta(w_copy.next(), v_copy, 0, 1)
                     dist_delta = v_eject_dist_delta + v_route_copy._dc.get_insert_delta(w_copy.next(), v_copy)
                     e = ExchangeSlow(v, w.next(), ExchangeType.OutRelocate, c_delta, tw_delta, dist_delta)    
+                    
                     if e.appliable() and e.feasible():
                         return e
         return None
+
 
     def feasible(self):
         return all([route.feasible() for route in self._routes])

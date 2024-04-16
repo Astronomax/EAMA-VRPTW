@@ -122,7 +122,8 @@ def feasible_ejections(route: 'RouteWrapper', p: list[int], k_max: int, p_best: 
             prev = ejected[-1]
             incr_last()
             while p_sum >= p_best or route[prev].l < a_quote[prev] or\
-                (a[prev] == pc.a[prev] and q_quote <= meta_wrapper.problem.vehicle_capacity):
+                route[prev].l < a_quote[prev] or\
+                (len(ejection) > 1 and a[prev] == pc.a[prev] and q_quote <= meta_wrapper.problem.vehicle_capacity):
                 if len(ejected) == 1:
                     return
                 backtrack()
