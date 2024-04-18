@@ -27,7 +27,7 @@ def generate_random_solution(problem: Problem):
         route = customers[:route_size]
         routes.append(route)
         customers = customers[route_size:]
-    solution = MetaWrapper(problem, routes)
+    solution = MetaWrapper(problem=problem, routes=routes)
     for nearest in solution.nearest.values():
         for v in nearest:
             assert isinstance(v, CustomerWrapper)

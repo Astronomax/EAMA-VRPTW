@@ -45,15 +45,53 @@ class Insertion(Modification):
 def insertions(v: CustomerWrapper, meta_wrapper: MetaWrapper = None, route: RouteWrapper = None, feasible_only=False):
     if route is not None:
         assert meta_wrapper is None
+        if feasible_only and route._pc.demand_pf[-1] + v.demand > route._problem.vehicle_capacity:
+            return
+        indexes = (w.value for w in route._route.head.iter())
+    else:
+        assert meta_wrapper is not None
+        indexes = (w.value for route in meta_wrapper._routes for w in route._route.head.iter())
+    for index in indexes:
+        e = Insertion(index, v)
+        if e.appliable() and (not feasible_only or e.feasible()):
+            yield e
+
+def nearest_insertions(v: CustomerWrapper, meta_wrapper: MetaWrapper = None, route: RouteWrapper = None, feasible_only=False):
+    #'''
+    if route is not None:
+        assert meta_wrapper is None
+        if feasible_only and route._pc.demand_pf[-1] + v.demand > route._problem.vehicle_capacity:
+            return
+        for w in route._route.head.iter():
+            e = Insertion(w.value, v)
+            if e.appliable() and (not feasible_only or e.feasible()):
+                yield e
+    else:
+        assert meta_wrapper is not None
+        for w in meta_wrapper.nearest[v]:
+            e = Insertion(w, v)
+            if e.appliable() and (not feasible_only or e.feasible()):
+                yield e
+        for route in meta_wrapper._routes:
+            e = Insertion(route._route.tail.value, v)
+            assert route._route.tail.value.number == 0
+            if e.appliable() and (not feasible_only or e.feasible()):
+                yield e
+    #'''
+    '''
+    if route is not None:
+        assert meta_wrapper is None
         routes = [route]
     else:
         assert meta_wrapper is not None
         routes = meta_wrapper._routes
     for route in routes:
+        if feasible_only and route._pc.demand_pf[-1] + v.demand > route._problem.vehicle_capacity:
+            continue
         for w in route._route.head.iter():
             e = Insertion(w.value, v)
             if e.appliable() and (not feasible_only or e.feasible()):
                 yield e
-
+    '''
 def feasible_insertions(v: CustomerWrapper, meta_wrapper: MetaWrapper = None, route: RouteWrapper = None):
-    return insertions(v, meta_wrapper, route, True)
+    return nearest_insertions(v, meta_wrapper, route, True)

@@ -18,7 +18,7 @@ def random_ejection_test_factory(num_tests=100):
                 tw_delta = e.penalty_delta(0, 1)
                 dist_delta = e.distance_delta()
                 routes = [[v._customer for v in route] for route in solution._routes]
-                solution_copy = MetaWrapper(problem, routes)
+                solution_copy = MetaWrapper(problem=problem, routes=routes)
                 route_copy = solution_copy._routes[ind]
                 c_before_ejection = route_copy._pc.get_penalty(1, 0)
                 tw_before_ejection = route_copy._pc.get_penalty(0, 1)

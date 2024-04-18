@@ -1,6 +1,5 @@
 from eama.structure import Problem
 
-
 class ListNode:
     def __init__(self, customer: 'CustomerWrapper'):
         self.value = customer
@@ -20,7 +19,7 @@ class ListNode:
         return self.next is None
 
 class RouteList:
-    def __init__(self, problem: Problem, list: list = []):
+    def __init__(self, problem: 'ProblemWrapper', list: list = []):
         self._problem = problem
         from eama.meta_wrapper import CustomerWrapper
         self.head = ListNode(CustomerWrapper(problem.depot))
@@ -29,11 +28,20 @@ class RouteList:
             node.next = ListNode(value)
             node.next.prev = node
             node = node.next
-        node.next = ListNode(CustomerWrapper(problem.depot))
+        self.tail = ListNode(CustomerWrapper(problem.depot))
+        node.next = self.tail
         node.next.prev = node
         self.length = len(list)
 
     def __len__(self):
+        '''
+        len = 0
+        for node in self.head.next.iter():
+            if node.tail():
+                break
+            len += 1
+        assert len == self.length
+        '''
         return self.length
 
     def __copy__(self):

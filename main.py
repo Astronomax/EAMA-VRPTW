@@ -18,15 +18,20 @@ if __name__ == '__main__':
     start_time = time.time()
     rmh_settings = RMHSettings()
     rmh_settings.i_rand = 1000
-    rmh_settings.t_max = 10 * 120
-    rmh_settings.lower_bound = 6
+    rmh_settings.t_max = 4 * 60
+    rmh_settings.lower_bound = 100
     gip_settings = GIPSettings()
     eama_settings = EAMASettings()
     eama = EAMA(problem, rmh_settings=rmh_settings, gip_settings=gip_settings, eama_settings=eama_settings, debug=True)
-    result = eama.powerful_route_minimization_heuristic(rmh_settings)
-    #cProfile.runctx('eama.powerful_route_minimization_heuristic(rmh_settings)', globals=globals(), locals={'rmh_settings': rmh_settings})
-    s = result.get_solution()
-    print(f'elapsed time: {time.time() - start_time}')
-    print(f'routes: {len(s)}')
-    with open(f"""solutions/{args.problem.split(os.sep)[-1].split(".")[0]}.sol""", 'w') as f:
-        f.write(problem.print_canonical(s))
+    #result = eama.powerful_route_minimization_heuristic(rmh_settings)
+
+    def wrapper_function():
+        result = eama.powerful_route_minimization_heuristic(rmh_settings)
+        s = result.get_solution()
+        print(f'elapsed time: {time.time() - start_time}')
+        print(f'routes: {len(s)}')
+        with open(f"""solutions/{args.problem.split(os.sep)[-1].split(".")[0]}.sol""", 'w') as f:
+            f.write(problem.print_canonical(s))
+
+    #cProfile.run('wrapper_function()')
+    wrapper_function()

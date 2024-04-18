@@ -9,7 +9,7 @@ import unittest
 class TestExchange(unittest.TestCase):
     customers = [Customer(i, 0, 0, 0, 0, 100, 0) for i in range(7)]
     problem = Problem('test', customers, 100, 100)
-    solution = MetaWrapper(problem)
+    solution = MetaWrapper(problem=problem)
     solution._routes = [
         RouteWrapper(problem, RouteList(problem, list(map(CustomerWrapper, customers[1:4])))),
         RouteWrapper(problem, RouteList(problem, list(map(CustomerWrapper, customers[4:7])))),

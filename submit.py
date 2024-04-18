@@ -21,6 +21,37 @@ def validate(routes):
     return distance
 
 
+instances = [
+    "C1_10_1.TXT",
+    "C1_10_2.TXT",
+    "C1_10_3.TXT",
+    "C1_10_4.TXT",
+    "C1_10_5.TXT",
+    "C1_10_6.TXT",
+    "C1_10_7.TXT",
+    "C1_10_8.TXT",
+    "C1_10_9.TXT",
+    "C1_10_10.TXT",  
+]
+
+for file_instance in instances:
+    problem = SolomonFormatParser(f'{problem_dir}/{file_instance}').get_problem()  
+    rmh_settings = RMHSettings()
+    rmh_settings.i_rand = 1000
+    rmh_settings.t_max = 4 * 60
+    gip_settings = GIPSettings()
+    eama_settings = EAMASettings()
+    eama = EAMA(problem, rmh_settings=rmh_settings, gip_settings=gip_settings, eama_settings=eama_settings, debug=False)
+    result = eama.powerful_route_minimization_heuristic(rmh_settings).get_solution()
+    print(problem.name, len(result))
+    with open(f"""{solution_dir}/{problem.name}.sol""", 'w') as f:
+        f.write(problem.print_canonical(result))
+
+
+
+
+
+'''
 for file in sorted(os.listdir(problem_dir)):
     instance_name = Path(file).stem.lower()
     problem = SolomonFormatParser(f'{problem_dir}/{file}').get_problem()  
@@ -38,6 +69,4 @@ for file in sorted(os.listdir(problem_dir)):
         'commit': "9d33a1c772ae9e051ea27572988780464efc8cf0"
     }
     x = requests.post(url, json = submission)
-    
-    
-
+'''

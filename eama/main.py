@@ -88,7 +88,20 @@ class EAMA:
             #print("'insert_feasible': started")
         assert meta_wrapper.feasible()
         assert meta_wrapper.valid(v)
-
+        #'''
+        for insertion in feasible_insertions(v, meta_wrapper=meta_wrapper):
+            insertion.apply()
+            assert meta_wrapper.feasible()
+            if self.debug:
+                self._debug_print("completed successfully", Colors.GREEN)
+                #print(Colors.GREEN + "'insert_feasible': completed successfully" + Colors.RESET)
+            return True
+        if self.debug:
+            self._debug_print("failed", Colors.RED)
+            #print(Colors.RED + "'insert_feasible': failed" + Colors.RESET)
+        return False
+        #'''        
+        '''
         try:
             insertion = choice(list(feasible_insertions(v, meta_wrapper=meta_wrapper)))
             insertion.apply()
@@ -102,6 +115,7 @@ class EAMA:
                 self._debug_print("failed", Colors.RED)
                 #print(Colors.RED + "'insert_feasible': failed" + Colors.RESET)
             return False
+        '''
 
     def _squeeze(self, meta_wrapper: MetaWrapper, v: CustomerWrapper, state: RMHState, settings: RMHSettings, deadline: float = inf):
         assert meta_wrapper.feasible()
@@ -139,19 +153,6 @@ class EAMA:
             except BreakLoop:
                 pass
 
-            '''
-            if self.debug:
-                meta_wrapper_copy = meta_wrapper.inherit()
-                c_delta = opt_exchange.penalty_delta(1, 0)
-                tw_delta = opt_exchange.penalty_delta(0, 1)
-                c_before_exchange = meta_wrapper_copy.get_penalty(1, 0)
-                tw_before_exchange = meta_wrapper_copy.get_penalty(0, 1)
-                opt_exchange.apply()
-                assert abs(c_delta - (meta_wrapper_copy.get_penalty(1, 0) - c_before_exchange)) < 1e-4
-                assert abs(tw_delta - (meta_wrapper_copy.get_penalty(0, 1) - tw_before_exchange)) < 1e-4
-                meta_wrapper.activate()
-            '''
-
             if self.debug:
                 self._debug_print(f"opt exchange delta: {opt_exchange_delta}", Colors.RESET)
                 #print(f"'squeeze': opt exchange delta: {opt_exchange_delta}")
@@ -185,6 +186,7 @@ class EAMA:
         return True, meta_wrapper
 
     def _insert_eject(self, meta_wrapper: MetaWrapper, v: CustomerWrapper, settings: RMHSettings, deadline: float = inf):
+        print(v.number)
         assert meta_wrapper.feasible()
         assert meta_wrapper.valid(v)
         assert v.ejected()
@@ -195,9 +197,10 @@ class EAMA:
         self.p[v.number] += 1
         opt_insertion_ejection = None
         p_best = inf
-        for route in meta_wrapper._routes:
+        for route in sample(meta_wrapper._routes, len(meta_wrapper._routes)):
             assert v.ejected()
-            for insertion in insertions(v, route=route):
+            insertions_list = list(insertions(v, route=route))
+            for insertion in sample(insertions_list, len(insertions_list)):
                 if time.time() > deadline:
                     raise TimeoutError()
                 assert v.ejected()
@@ -221,6 +224,7 @@ class EAMA:
                 #print(Colors.RED + "'insert_eject': failed" + Colors.RESET)
             return False
         insertion, ejection = opt_insertion_ejection
+        print([w.number for w in ejection._ejection])
         route = insertion._index.route()
         insertion.apply()
         assert not route.feasible()
@@ -237,7 +241,66 @@ class EAMA:
         if self.debug:
             self._debug_print("started", Colors.RESET)
             #print("'perturb': started")
-
+        '''
+        cnt = 0
+        for _ in range(i_rand):
+            if time.time() > deadline:
+                raise TimeoutError()
+            #e = meta_wrapper.N_random()
+            feasible_exchange = None
+            try:
+                v_route = meta_wrapper._routes[randint(0, len(meta_wrapper._routes) - 1)]
+                w_route = meta_wrapper._routes[randint(0, len(meta_wrapper._routes) - 1)]
+                if v_route is w_route:
+                    continue
+                    for v in sample(list(v_route), len(v_route)):
+                        v_route_copy = copy(v_route)
+                        cust_dict = {v.number: v for v in v_route_copy}
+                        v_copy = cust_dict[v.number]
+                        v_eject_c_delta = v_route._pc.get_eject_delta(v, 1, 0)
+                        v_eject_tw_delta = v_route._pc.get_eject_delta(v, 0, 1)
+                        v_eject_dist_delta = v_route._dc.get_eject_delta(v)   
+                        v_route_copy.eject(v_copy, True)
+                        for w in sorted(list(w_route), key=lambda u: v.c(u)):
+                            if v is w:
+                                continue
+                            w_copy = cust_dict[w.number]
+                            assert not w_copy.ejected()
+                            # only Out-Relocate supported
+                            c_delta = v_eject_c_delta + v_route_copy._pc.get_insert_delta(w_copy, v_copy, 1, 0)
+                            tw_delta = v_eject_tw_delta + v_route_copy._pc.get_insert_delta(w_copy, v_copy, 0, 1)
+                            dist_delta = v_eject_dist_delta + v_route_copy._dc.get_insert_delta(w_copy, v_copy)
+                            e = ExchangeSlow(v, w, ExchangeType.OutRelocate, c_delta, tw_delta, dist_delta)             
+                            if e.appliable() and e.feasible():
+                                feasible_exchange = e
+                                raise BreakLoop
+                            c_delta = v_eject_c_delta + v_route_copy._pc.get_insert_delta(w_copy.next(), v_copy, 1, 0)
+                            tw_delta = v_eject_tw_delta + v_route_copy._pc.get_insert_delta(w_copy.next(), v_copy, 0, 1)
+                            dist_delta = v_eject_dist_delta + v_route_copy._dc.get_insert_delta(w_copy.next(), v_copy)
+                            e = ExchangeSlow(v, w.next(), ExchangeType.OutRelocate, c_delta, tw_delta, dist_delta)                
+                            if e.appliable() and e.feasible():
+                                feasible_exchange = e
+                                raise BreakLoop
+                else:
+                    for v in sample(list(v_route), len(v_route)):
+                        #print(len(w_route))
+                        for w in sorted(list(w_route), key=lambda u: v.c(u)):
+                            exchanges_list = list(exchanges(v, w))
+                            shuffle(exchanges_list)
+                            for e in exchanges_list:
+                                if e.appliable() and e.feasible():
+                                    feasible_exchange = e
+                                    raise BreakLoop
+            except BreakLoop:
+                pass
+            if feasible_exchange:
+                cnt += 1
+                assert feasible_exchange.appliable() and feasible_exchange.feasible()
+                feasible_exchange.apply()
+                assert meta_wrapper.feasible()
+        print(cnt)
+        '''
+        #'''
         for _ in range(i_rand):
             if time.time() > deadline:
                 raise TimeoutError()
@@ -248,6 +311,7 @@ class EAMA:
                 assert meta_wrapper.feasible()
             else:
                 break
+        #'''
         if self.debug:
             self._debug_print("completed successfully", Colors.GREEN)
             #print(Colors.GREEN + "'perturb': completed successfully" + Colors.RESET)
@@ -314,7 +378,7 @@ class EAMA:
             #print(Colors.PURPLE + f"'RM heuristic': started" + Colors.RESET)
         state = RMHState()
         # each client on his own route
-        meta_wrapper = MetaWrapper(self.problem)
+        meta_wrapper = MetaWrapper(problem=self.problem)
         straight_lower_bound = ceil(sum([c.demand for c in self.problem.customers]) / self.problem.vehicle_capacity)
         lower_bound = max(settings.lower_bound, straight_lower_bound)
 

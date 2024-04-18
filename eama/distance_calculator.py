@@ -5,11 +5,13 @@ from itertools import accumulate
 
 
 class DistanceCalculator:
-    def __init__(self, route: 'RouteWrapper'):
+    def __init__(self, route: 'RouteWrapper'=None):
         self._route = route
-        self._problem = route._problem
+        
         # we should be able to get the node index in O(1) time
-        self.update()
+        if route is not None:
+            self._problem = route._problem
+            self.update()
 
     def update(self):
         self._index = {v.value: i for i, v in enumerate(self._route._route.head.iter())} # hash(v) = v.number
@@ -18,6 +20,13 @@ class DistanceCalculator:
         distances = [u.c(v) for u, v in zip(route[1:], route[:-1])]
         self._dist_pf = list(accumulate(distances, initial=0))
         self._dist_sf = list(accumulate(distances[::-1], initial=0))[::-1]
+
+    def __copy__(self):
+        result = DistanceCalculator()
+        result._problem = self._problem
+        result._dist_pf = self._dist_pf.copy()
+        result._dist_sf = self._dist_sf.copy()
+        return result
 
     def get_distance(self):
         return self._dist_pf[-1]

@@ -133,7 +133,7 @@ class TestPenaltyCalculator(unittest.TestCase):
         depot = TestPenaltyCalculator.problem.depot
         a = a_quote = depot.e
         self.assertEqual(pc.a[0], a)
-        self.assertEqual(pc.a_quote[0], a_quote)
+        #self.assertEqual(pc.a_quote[0], a_quote)
         tw_pf = 0
         demand_pf = depot.demand
         self.assertEqual(pc.tw_pf[0], tw_pf)
@@ -144,14 +144,14 @@ class TestPenaltyCalculator(unittest.TestCase):
             a_quote = a + prev.s + prev.c(next)
             a = min(max(a_quote, next.e), next.l)
             self.assertEqual(pc.a[i], a)
-            self.assertEqual(pc.a_quote[i], a_quote)
+            #self.assertEqual(pc.a_quote[i], a_quote)
             tw_pf += max(a_quote - next.l, 0)
             demand_pf += next.demand
             self.assertEqual(pc.tw_pf[i], tw_pf)
             self.assertEqual(pc.demand_pf[i], demand_pf)
         z = z_quote = depot.l
         self.assertEqual(pc.z[n - 1], z)
-        self.assertEqual(pc.z_quote[n - 1], z_quote)
+        #self.assertEqual(pc.z_quote[n - 1], z_quote)
         tw_sf = 0
         demand_sf = depot.demand
         self.assertEqual(pc.tw_sf[n - 1], tw_sf)
@@ -162,7 +162,7 @@ class TestPenaltyCalculator(unittest.TestCase):
             z_quote = z - prev.s - prev.c(next)
             z = min(max(z_quote, prev.e), prev.l)
             self.assertEqual(pc.z[i], z)
-            self.assertEqual(pc.z_quote[i], z_quote)
+            #self.assertEqual(pc.z_quote[i], z_quote)
             tw_sf += max(prev.e - z_quote, 0)
             demand_sf += prev.demand
             self.assertEqual(pc.tw_sf[i], tw_sf)

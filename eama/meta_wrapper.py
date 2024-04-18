@@ -8,15 +8,33 @@ from random import shuffle, randint
 from copy import copy
 
 
+class ProblemWrapper:
+    def __init__(self, problem: Problem):
+        self._problem = problem
+        # precalc nearest-neighbourhood of each customer
+        # and distance between each pair of customers
+        # it will be useful for some heuristic optimizations
+        customers = problem.customers
+        self.c = {v.number: {w.number: v.c(w) for w in customers} for v in customers}
+        customers = [v.number for v in problem.customers if v.number != problem.depot.number]
+        self.nearest = {v: sorted(customers, key=lambda w: self.c[v][w]) for v in customers}
+
+    def __getattr__(self, attr):
+        if hasattr(self.__dict__['_problem'], attr):
+            return getattr(self.__dict__['_problem'], attr)
+        else:
+            raise AttributeError(f"'ProblemWrapper' object has no attribute '{attr}'")
+
 class RouteWrapper:
-    def __init__(self, problem: Problem, route: RouteList, meta_wrapper: 'MetaWrapper'=None):
+    def __init__(self, problem: ProblemWrapper, route: RouteList=None, meta_wrapper: 'MetaWrapper'=None):
         self._problem = problem
         self._route = route
         self._meta_wrapper = meta_wrapper
-        for node in self._route.head.iter():
-            node.value._index = CustomerIndex(self, node)
-        self._pc = PenaltyCalculator(self)
-        self._dc = DistanceCalculator(self)
+        if route:
+            for node in self._route.head.iter():
+                node.value._index = CustomerIndex(self, node)
+            self._pc = PenaltyCalculator(self)
+            self._dc = DistanceCalculator(self)
 
     def __len__(self):
         return len(self._route)
@@ -110,27 +128,45 @@ class CustomerWrapper:
 
 
 class MetaWrapper:
-    def __init__(self, problem: Problem = None, routes: list[Customer] = None):
-        self.problem = problem
-        self._ejection_pool = []
-        if problem:
+    def __init__(self, **kwargs):
+        if not kwargs:
+            return
+        if 'problem_wrapper' in kwargs:
+            self.problem = kwargs['problem_wrapper']
+        elif 'problem' in kwargs:
+            self.problem = ProblemWrapper(kwargs['problem'])
+        elif 'problem_wrapper' in kwargs:
+            self.problem = kwargs['problem_wrapper']
+        if self.problem:
+            routes = kwargs.get('routes', None)
             if routes:
-                customers = set([v.number for v in sum(routes, [])])
-                assert self.problem.depot.number not in customers
-                assert len(set(customers)) == len(customers)
-                customers.add(problem.depot.number)
-                #assert set(customers) == set([v.number for v in problem.customers])
-                self._routes = [RouteWrapper(self.problem, RouteList(self.problem, [CustomerWrapper(v) for v in route]), self) for route in routes]
-                customers = set(customers)
-                self._ejection_pool = list(map(CustomerWrapper, (filter(lambda x: x.number not in customers, problem.customers))))
+                not_ejected = set([v for v in sum(routes, [])])
+                assert self.problem.depot not in not_ejected
+                not_ejected.add(self.problem.depot)
+                self._routes = []
+                self._ejection_pool = [CustomerWrapper(v) for v in self.problem.customers if v not in not_ejected]
+
+                for route in routes:
+                    route_list = RouteList(self.problem, [CustomerWrapper(v) for v in route])
+                    route_wrapper = RouteWrapper(self.problem, route_list, meta_wrapper=self)
+                    self._routes.append(route_wrapper)
                 assert self.valid()
-                customers = sum(list(map(list, self._routes)), [])
             else:
-                customers = list(map(CustomerWrapper, filter(lambda x: x.number != problem.depot.number, problem.customers)))
-                self._routes = [RouteWrapper(self.problem, RouteList(self.problem, [customer]), self) for customer in customers]
+                self._routes = []
+                self._ejection_pool = []
+                for v in self.problem.customers:
+                    if v.number != self.problem.depot.number:
+                        route_list = RouteList(self.problem, [CustomerWrapper(v)])
+                        route_wrapper = RouteWrapper(self.problem, route_list, self)
+                        self._routes.append(route_wrapper)
             # precalc nearest-neighbourhood of each customer
+            # and distance between each pair of customers
             # it will be useful for some heuristic optimizations
-            self.nearest = {v: sorted(customers.copy(), key=lambda u: v.c(u)) for v in customers}
+            self._index = {v.number: v for route in self._routes for v in route}
+            self._index.update({v.number: v for v in self._ejection_pool})
+            self.nearest = {self._index[v]: [self._index[w] for w in nearest] for v, nearest in self.problem.nearest.items()}
+        elif 'routes' in kwargs:
+            raise ValueError("'problem' or 'problem_wrapper' must be passed")
 
     def get_penalty(self, alpha, beta):
         return sum([route.get_penalty(alpha, beta) for route in self._routes])
@@ -150,17 +186,22 @@ class MetaWrapper:
         result.problem = self.problem
         result._ejection_pool = self._ejection_pool.copy()
         result.nearest = self.nearest # const
-        result._routes = [RouteWrapper(self.problem, copy(route._route), result) for route in self._routes]
-
+        #result.c = self.c # const
+        routes_copy = []
+        for route in self._routes:
+            route_copy = RouteWrapper(self.problem)
+            route_copy._route = copy(route._route)
+            route_copy._meta_wrapper = result
+            route_copy._pc = copy(route._pc)
+            route_copy._dc = copy(route._dc)
+            route_copy._pc._route = route_copy
+            route_copy._dc._route = route_copy
+            for node in route_copy._route.head.iter():
+                node.value._index = CustomerIndex(route_copy, node)
+            routes_copy.append(route_copy)
+        result._routes = routes_copy
         for v in result._ejection_pool:
             v._index = None
-
-        #for route in result._routes:
-        #    for node in route._route.head.iter():
-        #        assert node.value.route() is route
-        #        assert node.value in node.value.pc()._index
-        #        assert node.value in route._pc._index
-
         return result
 
     def __copy__(self):
@@ -293,8 +334,10 @@ class MetaWrapper:
         if currently_ejected_node is not None:
             customers.extend([currently_ejected_node.number])
         if len(customers) != len(set(customers)):
+            print(len(customers), len(set(customers)))
             return False
         if len(set(customers)) != len(self.problem.customers) - 1:
+            print(len(set(customers)), len(self.problem.customers) - 1)
             return False
         return True
     

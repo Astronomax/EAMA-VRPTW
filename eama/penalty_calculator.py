@@ -6,11 +6,13 @@ from itertools import accumulate
 
 
 class PenaltyCalculator:
-    def __init__(self, route: 'RouteWrapper'):
+    def __init__(self, route: 'RouteWrapper' = None):
         self._route = route
-        self._problem = route._problem
         # we should be able to get the node index in O(1) time
-        self.update()
+        if route is not None:
+            self._problem = route._problem
+            #self._meta_wrapper = route.meta_wrapper
+            self.update()
 
     def update(self):
         self._index = {v.value: i for i, v in enumerate(self._route._route.head.iter())} # hash(v) = v.number
@@ -20,32 +22,42 @@ class PenaltyCalculator:
         # calculate a, a_quote, tw_pf
         self.tw_pf = [0] * n
         self.a = [0] * n
-        self.a_quote = [0] * n
-        self.a[0] = self.a_quote[0] = self._problem.depot.e
+        self.a[0] = self._problem.depot.e
         for i in range(1, n):
             prev = route[i - 1]
             next = route[i]
-            self.a_quote[i] = self.a[i - 1] + prev.s + prev.c(next)
-            self.a[i] = min(max(self.a_quote[i], next.e), next.l)
-            self.tw_pf[i] = max(self.a_quote[i] - next.l, 0)
+            a_quote = self.a[i - 1] + prev.s + prev.c(next)#self._problem.c[prev.number][next.number]#prev.c(next)
+            self.a[i] = min(max(a_quote, next.e), next.l)
+            self.tw_pf[i] = max(a_quote - next.l, 0)
         self.tw_pf = list(accumulate(self.tw_pf))
         # calculate z, z_quote, tw_sf
         self.tw_sf = [0] * n
         self.z = [0] * n
-        self.z_quote = [0] * n
-        self.z[n - 1] = self.z_quote[n - 1] = self._problem.depot.l
+        self.z[n - 1] = self._problem.depot.l
         for i in reversed(range(n - 1)):
             prev = route[i]
             next = route[i + 1]
-            self.z_quote[i] = self.z[i + 1] - prev.s - prev.c(next)
-            self.z[i] = min(max(self.z_quote[i], prev.e), prev.l)
-            self.tw_sf[i] = max(prev.e - self.z_quote[i], 0)
+            z_quote = self.z[i + 1] - prev.s - prev.c(next)#self._problem.c[prev.number][next.number]#prev.c(next)
+            self.z[i] = min(max(z_quote, prev.e), prev.l)
+            self.tw_sf[i] = max(prev.e - z_quote, 0)
         self.tw_sf = list(accumulate(self.tw_sf[::-1]))[::-1]
         # capacity penalty precalc
         self.demand_pf = list(accumulate(route, lambda pf, c: pf + c.demand, initial=0))[1:]
         self.demand_sf = list(accumulate(route[::-1], lambda pf, c: pf + c.demand, initial=0))[::-1][:-1]
         
         assert abs(self.tw_pf[-1] - self.tw_sf[0]) < 1e-4
+
+    def __copy__(self):
+        result = PenaltyCalculator()
+        result._problem = self._problem
+        result._index = self._index.copy()
+        result.a = self.a.copy()
+        result.tw_pf = self.tw_pf.copy()
+        result.z = self.z.copy()
+        result.tw_sf = self.tw_sf.copy()
+        result.demand_pf = self.demand_pf.copy()
+        result.demand_sf = self.demand_sf.copy()
+        return result
 
     def get_penalty(self, alpha, beta):
         p_c = max(self.demand_pf[-1] - self._problem.vehicle_capacity, 0)
@@ -64,8 +76,8 @@ class PenaltyCalculator:
         p_tw = pc.tw_pf[pos - 1] + pc.tw_sf[pos]
         x = index.prev()
         y = index
-        a_quote_v = pc.a[pos - 1] + x.s + x.c(w)
-        z_quote_v = pc.z[pos] - w.s - w.c(y)
+        a_quote_v = pc.a[pos - 1] + x.s + x.c(w)#pc._problem.c[x.number][w.number]#x.c(w)
+        z_quote_v = pc.z[pos] - w.s - w.c(y)#pc._problem.c[w.number][y.number]#w.c(y)
         p_tw += max(a_quote_v - w.l, 0)
         p_tw += max(w.e - z_quote_v, 0)
         a_v = min(max(a_quote_v, w.e), w.l)
@@ -82,8 +94,8 @@ class PenaltyCalculator:
         p_tw = pc.tw_pf[pos - 1] + pc.tw_sf[pos + 1]
         x = index.prev()
         y = index.next()
-        a_quote_v = pc.a[pos - 1] + x.s + x.c(w)
-        z_quote_v = pc.z[pos + 1] - w.s - w.c(y)
+        a_quote_v = pc.a[pos - 1] + x.s + x.c(w)#pc._problem.c[x.number][w.number]#x.c(w)
+        z_quote_v = pc.z[pos + 1] - w.s - w.c(y)#pc._problem.c[w.number][y.number]#w.c(y)
         p_tw += max(a_quote_v - w.l, 0)
         p_tw += max(w.e - z_quote_v, 0)
         a_v = min(max(a_quote_v, w.e), w.l)
@@ -100,7 +112,7 @@ class PenaltyCalculator:
         p_tw = pc.tw_pf[pos - 1] + pc.tw_sf[pos + 1]
         x = index.prev()
         v = index.next()
-        a_quote_v = pc.a[pos - 1] + x.s + x.c(v)
+        a_quote_v = pc.a[pos - 1] + x.s + x.c(v)#pc._problem.c[x.number][v.number]#x.c(v)
         a_v = min(max(a_quote_v, v.e), v.l)
         p_tw += max(a_quote_v - v.l, 0)
         p_tw += max(a_v - pc.z[pos + 1], 0)
@@ -122,7 +134,7 @@ class PenaltyCalculator:
         p_c = max(0, v.pc().demand_pf[v_pos] + w.pc().demand_sf[w_pos + 1] - v.pc()._problem.vehicle_capacity) 
         p_tw = v.pc().tw_pf[v_pos] + w.pc().tw_sf[w_pos + 1]
         w_next = w.next()
-        a_quote_v = v.pc().a[v_pos] + v._customer.s + v.c(w_next)
+        a_quote_v = v.pc().a[v_pos] + v._customer.s + v.c(w_next)#v.pc()._problem.c[v.number][w_next.number]#v.c(w_next)
         p_tw += max(a_quote_v - w.pc().z[w_pos + 1], 0)
         return alpha * p_c + beta * p_tw
 
