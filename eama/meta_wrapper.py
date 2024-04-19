@@ -279,6 +279,8 @@ class MetaWrapper:
             customers = [v for route in self._routes for v in route]
         shuffle(customers)
 
+        #all_customers = [v for route in self._routes for v in route]
+
         for v in customers:
             v_route = v.route()
 
@@ -292,6 +294,8 @@ class MetaWrapper:
             v_eject_tw_delta = v_route._pc.get_eject_delta(v, 0, 1)
             v_eject_dist_delta = v_route._dc.get_eject_delta(v)   
             v_route_copy.eject(v_copy, True)
+
+            #shuffle(all_customers)
 
             for w in self.nearest[v]:
                 if v is w or w.ejected():
@@ -334,10 +338,8 @@ class MetaWrapper:
         if currently_ejected_node is not None:
             customers.extend([currently_ejected_node.number])
         if len(customers) != len(set(customers)):
-            print(len(customers), len(set(customers)))
             return False
         if len(set(customers)) != len(self.problem.customers) - 1:
-            print(len(set(customers)), len(self.problem.customers) - 1)
             return False
         return True
     

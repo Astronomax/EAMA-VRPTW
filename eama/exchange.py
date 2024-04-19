@@ -80,6 +80,10 @@ class Exchange:
                 node.value._index._route = v_route
             for node in self._w.node().next.iter():
                 node.value._index._route = w_route
+            v_tail = v_route._route.tail
+            w_tail = w_route._route.tail
+            v_route._route.tail = w_tail
+            w_route._route.tail = v_tail
             v_route._route.length = 0
             for node in v_route._route.head.next.iter():
                 if node.tail():
@@ -126,6 +130,12 @@ class Exchange:
         if v_route is not w_route:
             w_route._pc.update()
             w_route._dc.update()
+
+        '''
+        for route in v_route._meta_wrapper._routes:
+            assert route._route.tail.value.route() is route
+        '''
+
         return True
 
 

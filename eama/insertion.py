@@ -8,14 +8,13 @@ class Insertion(Modification):
         self._customer = customer
 
     def appliable(self):
-        try:
-            if self._index.node().head():
-                raise Exception()
-            if self._index is self._customer:
-                raise Exception()
-            if not self._customer.ejected():
-                raise Exception()
-        except Exception as _:
+        if self._index.ejected():
+            return False
+        if not self._customer.ejected():
+            return False
+        if self._index.node().head():
+            return False
+        if self._index is self._customer:
             return False
         return True  
 
@@ -53,15 +52,15 @@ def insertions(v: CustomerWrapper, meta_wrapper: MetaWrapper = None, route: Rout
         indexes = (w.value for route in meta_wrapper._routes for w in route._route.head.iter())
     for index in indexes:
         e = Insertion(index, v)
-        if e.appliable() and (not feasible_only or e.feasible()):
+        if e.appliable() and ((not feasible_only) or e.feasible()):
             yield e
 
 def nearest_insertions(v: CustomerWrapper, meta_wrapper: MetaWrapper = None, route: RouteWrapper = None, feasible_only=False):
     #'''
     if route is not None:
         assert meta_wrapper is None
-        if feasible_only and route._pc.demand_pf[-1] + v.demand > route._problem.vehicle_capacity:
-            return
+        #if feasible_only and route._pc.demand_pf[-1] + v.demand > route._problem.vehicle_capacity:
+        #    return
         for w in route._route.head.iter():
             e = Insertion(w.value, v)
             if e.appliable() and (not feasible_only or e.feasible()):
@@ -69,11 +68,16 @@ def nearest_insertions(v: CustomerWrapper, meta_wrapper: MetaWrapper = None, rou
     else:
         assert meta_wrapper is not None
         for w in meta_wrapper.nearest[v]:
+            #if not w.ejected():
+            #    print(w.number, [u.number for u in w.route()])
             e = Insertion(w, v)
             if e.appliable() and (not feasible_only or e.feasible()):
                 yield e
         for route in meta_wrapper._routes:
+            assert route._route.tail.value.route() is route
+            #print(route._route.tail.value.number, [u.number for u in route])
             e = Insertion(route._route.tail.value, v)
+            #print(e.penalty_delta(0, 1), e.penalty_delta(1, 0))
             assert route._route.tail.value.number == 0
             if e.appliable() and (not feasible_only or e.feasible()):
                 yield e

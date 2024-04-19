@@ -111,6 +111,7 @@ def feasible_ejections(route: 'RouteWrapper', p: list[int], k_max: int, p_best =
             and total_demand <= meta_wrapper.problem.vehicle_capacity:
             dist_delta = dist_pf[j] + dc._dist_sf[j] - dist_before
             yield Ejection(meta_wrapper, ejection, c_delta, tw_delta, dist_delta), p_sum
+            print(p_sum)
             p_best = p_sum
 
         if p_sum < p_best and ejected[-1] < n - 2 and len(ejected) < k_max:
@@ -122,14 +123,21 @@ def feasible_ejections(route: 'RouteWrapper', p: list[int], k_max: int, p_best =
                 backtrack()
             prev = ejected[-1]
             incr_last()
-            while p_sum >= p_best or route[prev].l < a_quote[prev] or\
-                route[prev].l < a_quote[prev]:# or\
+            while route[prev].l < a_quote[prev]:
+                if len(ejected) == 1:
+                    return
+                backtrack()
+                prev = ejected[-1]
+                incr_last()
+            '''
+            while p_sum >= p_best or route[prev].l < a_quote[prev]:# or\
                 #(len(ejection) > 1 and a[prev] == pc.a[prev] and q_quote <= meta_wrapper.problem.vehicle_capacity):
                 if len(ejected) == 1:
                     return
                 backtrack()
                 prev = ejected[-1]
                 incr_last()
+            '''
 
 '''
 def check_ejection_metadata_is_valid(route, p, k_max, ejection, a_quote, a, total_demand, p_sum):

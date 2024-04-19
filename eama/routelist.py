@@ -49,9 +49,14 @@ class RouteList:
         result.head = ListNode(self.head.value)
         prev = result.head
         for node in self.head.next.iter():
+            if node.tail():
+                break
             prev.next = ListNode(node.value)
             prev.next.prev = prev
             prev = prev.next
+        result.tail = ListNode(self.tail.value)
+        prev.next = result.tail
+        result.tail.prev = prev
         result.length = self.length
         return result
 
