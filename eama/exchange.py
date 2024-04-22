@@ -149,6 +149,51 @@ class ExchangeFast(Modification):
     def appliable(self):
         return Exchange(self._v, self._w, self._type).appliable()
 
+    def penalty_delta_lower_bound(self, alpha, beta):
+        assert self.appliable()
+        from eama.penalty_calculator import PenaltyCalculator
+        if self._type == ExchangeType.Exchange and self._v.route() is self._w.route():
+            route = self._v.route()
+            pc = route._pc
+            a, b = self._v, self._w
+            a_pos, b_pos = pc._index[a], pc._index[b]
+            if a_pos > b_pos:
+                a, b = b, a
+                a_pos, b_pos = b_pos, a_pos
+            p_tw = pc.tw_pf[a_pos - 1]
+            
+            if a_pos + 1 < b_pos:
+                seg = (pc.route[a_pos - 1: a_pos + 2]).copy()
+                seg[1] = b
+                _a = pc.a[a_pos - 1]
+                for i, _, in enumerate(seg):
+                    if i > 0:
+                        a_quote = _a + seg[i - 1].s + seg[i - 1].c(seg[i])
+                        _a = min(max(a_quote, seg[i].e), seg[i].l)
+                        p_tw += max(0, a_quote - seg[i].l)
+                if _a == pc.a[a_pos + 1]:
+                    p_tw += pc.tw_pf[b_pos - 1] - pc.tw_pf[a_pos + 1]
+                    seg = (pc.route[b_pos - 1: b_pos + 2]).copy()
+                    seg[1] = a
+                    _a = pc.a[b_pos - 1]
+                    for i, _, in enumerate(seg):
+                        if i > 0:
+                            a_quote = _a + seg[i - 1].s + seg[i - 1].c(seg[i])
+                            _a = min(max(a_quote, seg[i].e), seg[i].l)
+                            p_tw += max(0, a_quote - seg[i].l)   
+                    if _a == pc.a[b_pos + 1]:
+                        p_tw += pc.tw_pf[-1] - pc.tw_pf[b_pos + 1]
+                        return beta * (p_tw - route.get_penalty(0, 1)), True
+            return beta * (p_tw - route.get_penalty(0, 1)), False
+
+        if self._type == ExchangeType.TwoOpt:
+            return PenaltyCalculator.two_opt_penalty_delta(self._v, self._w, alpha, beta)
+        elif self._type == ExchangeType.OutRelocate:
+            return PenaltyCalculator.out_relocate_penalty_delta(self._v, self._w, alpha, beta)
+        elif self._type == ExchangeType.Exchange:
+            return PenaltyCalculator.exchange_penalty_delta(self._v, self._w, alpha, beta)
+        assert False
+
     def penalty_delta(self, alpha, beta):
         assert self.appliable()
         from eama.penalty_calculator import PenaltyCalculator

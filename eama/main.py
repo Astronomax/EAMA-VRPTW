@@ -140,8 +140,8 @@ class EAMA:
 
         # insert such that penalty is minimum
         insertions_list = list(insertions(v, meta_wrapper=meta_wrapper))
-        print([(insertion.penalty_delta(state.alpha, state.beta), insertion._index.number) for insertion in insertions_list[:6]])
-        print(len(insertions_list))
+        #print([(insertion.penalty_delta(state.alpha, state.beta), insertion._index.number) for insertion in insertions_list[:6]])
+        #print(len(insertions_list))
         insertion=min(insertions_list,\
             key=lambda e: e.penalty_delta(state.alpha, state.beta))
         #route = insertion._index.route()
@@ -187,6 +187,8 @@ class EAMA:
                     self._debug_print(f"beta after correction: {state.beta}", Colors.RESET)
                     #print(f"'squeeze': beta after correction: {state.beta}")
                 return False, None
+            #if opt_exchange._v.route() is opt_exchange._w.route():
+            #    print(opt_exchange._type)
             assert opt_exchange_delta == opt_exchange.penalty_delta(state.alpha, state.beta)
             if self.debug:
                 c_delta = opt_exchange.penalty_delta(1, 0)
@@ -231,68 +233,73 @@ class EAMA:
         opt_insertion_ejection = None
         p_best = inf
         #for route in sample(meta_wrapper._routes, len(meta_wrapper._routes)):
-        for ind, route in enumerate(meta_wrapper._routes):
-            assert v.ejected()
-            insertions_list = list(insertions(v, route=route))
-            for insertion in sample(insertions_list, len(insertions_list)):
-                if time.time() > deadline:
-                    raise TimeoutError()
+        try:
+            for ind, route in enumerate(meta_wrapper._routes):
                 assert v.ejected()
-                insertion.apply()
-                assert not v.ejected()
-                assert not insertion._index.route().feasible()
+                insertions_list = list(insertions(v, route=route))
+                for insertion in sample(insertions_list, len(insertions_list)):
+                    if time.time() > deadline:
+                        raise TimeoutError()
+                    assert v.ejected()
+                    insertion.apply()
+                    assert not v.ejected()
+                    assert not insertion._index.route().feasible()
 
 
 
-                '''
-                def subsets_lexicographic_order(nums, k):
-                    nums.sort()
-                    n = len(nums)
-                    for r in range(1, k + 1):
-                        for combo in combinations(nums, r):
-                            yield list(combo)
+                    '''
+                    def subsets_lexicographic_order(nums, k):
+                        nums.sort()
+                        n = len(nums)
+                        for r in range(1, k + 1):
+                            for combo in combinations(nums, r):
+                                yield list(combo)
 
 
 
-                solution = meta_wrapper
-                n = len(route)
-                all_ejections = sorted(subsets_lexicographic_order(list(range(n)), 5))
-                ejections = list(feasible_ejections(route, self.p, 5, p_best))
-                j = 0
-                p_best_tmp = p_best
-                for ejection_list in all_ejections:
-                    solution_copy = solution.inherit()
-                    route_copy = solution_copy._routes[ind]
-                    ejection = [route_copy[i] for i in ejection_list]
-                    Ejection(solution_copy, ejection, 0, 0, 0).apply()
-                    p_sum = sum([self.p[v.number] for v in ejection])
-                    if route_copy.feasible():
-                        if p_sum < p_best_tmp:
-                            if j == len(ejections):
-                                for node in route._route.head.iter():
-                                    print(node.value._customer)
-                                print(ejection_list)
-                            assert j < len(ejections)
-                            assert all([x == y for x, y in zip(ejections[j][0]._ejection, ejection)])
-                            assert ejections[j][1] == p_sum
-                            p_best_tmp = p_sum
-                            j += 1
-                    solution.activate()
-                assert j == len(ejections)
-                '''
+                    solution = meta_wrapper
+                    n = len(route)
+                    all_ejections = sorted(subsets_lexicographic_order(list(range(n)), 5))
+                    ejections = list(feasible_ejections(route, self.p, 5, p_best))
+                    j = 0
+                    p_best_tmp = p_best
+                    for ejection_list in all_ejections:
+                        solution_copy = solution.inherit()
+                        route_copy = solution_copy._routes[ind]
+                        ejection = [route_copy[i] for i in ejection_list]
+                        Ejection(solution_copy, ejection, 0, 0, 0).apply()
+                        p_sum = sum([self.p[v.number] for v in ejection])
+                        if route_copy.feasible():
+                            if p_sum < p_best_tmp:
+                                if j == len(ejections):
+                                    for node in route._route.head.iter():
+                                        print(node.value._customer)
+                                    print(ejection_list)
+                                assert j < len(ejections)
+                                assert all([x == y for x, y in zip(ejections[j][0]._ejection, ejection)])
+                                assert ejections[j][1] == p_sum
+                                p_best_tmp = p_sum
+                                j += 1
+                        solution.activate()
+                    assert j == len(ejections)
+                    '''
 
 
 
 
-                for ejection, p_sum in feasible_ejections(route, self.p, settings.k_max, p_best):
-                    #print(p_sum, p_best)
-                    assert p_sum < p_best
-                    #print(p_sum)
-                    #if p_sum < p_best or len(ejection._ejection) < len(opt_insertion_ejection[1]._ejection):
-                    opt_insertion_ejection = (insertion, copy(ejection))
-                    p_best = p_sum
-                route.eject(v, True)
-                assert v.ejected()
+                    for ejection, p_sum in feasible_ejections(route, self.p, settings.k_max, p_best):
+                        #print(p_sum, p_best)
+                        assert p_sum <= p_best
+                        #print(p_sum)
+                        #if p_sum < p_best or len(ejection._ejection) < len(opt_insertion_ejection[1]._ejection):
+                        opt_insertion_ejection = (insertion, copy(ejection))
+                            #if p_sum == 0 and len(ejection._ejection) == 1:
+                            #    raise BreakLoop
+                        p_best = p_sum
+                    route.eject(v, True)
+                    assert v.ejected()
+        except BreakLoop:
+            pass
         if self.debug:
             self._debug_print(f"opt insertion-ejection p_sum: {p_best}", Colors.RESET)
             #print(f"'insert_eject': opt insertion-ejection p_sum: {p_best}")
@@ -302,6 +309,7 @@ class EAMA:
                 #print(Colors.RED + "'insert_eject': failed" + Colors.RESET)
             return False
         insertion, ejection = opt_insertion_ejection
+        #print(len(ejection._ejection))
         #print([w.number for w in ejection._ejection])
         route = insertion._index.route()
         insertion.apply()

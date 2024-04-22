@@ -16,16 +16,16 @@ class PenaltyCalculator:
 
     def update(self):
         self._index = {v.value: i for i, v in enumerate(self._route._route.head.iter())} # hash(v) = v.number
-        route = [node.value for node in self._route._route.head.iter()]
+        self.route = [node.value for node in self._route._route.head.iter()]
         # time windows penalty precalc
-        n = len(route)
+        n = len(self.route)
         # calculate a, a_quote, tw_pf
         self.tw_pf = [0] * n
         self.a = [0] * n
         self.a[0] = self._problem.depot.e
         for i in range(1, n):
-            prev = route[i - 1]
-            next = route[i]
+            prev = self.route[i - 1]
+            next = self.route[i]
             a_quote = self.a[i - 1] + prev.s + prev.c(next)#self._problem.c[prev.number][next.number]#prev.c(next)
             self.a[i] = min(max(a_quote, next.e), next.l)
             self.tw_pf[i] = max(a_quote - next.l, 0)
@@ -35,15 +35,15 @@ class PenaltyCalculator:
         self.z = [0] * n
         self.z[n - 1] = self._problem.depot.l
         for i in reversed(range(n - 1)):
-            prev = route[i]
-            next = route[i + 1]
+            prev = self.route[i]
+            next = self.route[i + 1]
             z_quote = self.z[i + 1] - prev.s - prev.c(next)#self._problem.c[prev.number][next.number]#prev.c(next)
             self.z[i] = min(max(z_quote, prev.e), prev.l)
             self.tw_sf[i] = max(prev.e - z_quote, 0)
         self.tw_sf = list(accumulate(self.tw_sf[::-1]))[::-1]
         # capacity penalty precalc
-        self.demand_pf = list(accumulate(route, lambda pf, c: pf + c.demand, initial=0))[1:]
-        self.demand_sf = list(accumulate(route[::-1], lambda pf, c: pf + c.demand, initial=0))[::-1][:-1]
+        self.demand_pf = list(accumulate(self.route, lambda pf, c: pf + c.demand, initial=0))[1:]
+        self.demand_sf = list(accumulate(self.route[::-1], lambda pf, c: pf + c.demand, initial=0))[::-1][:-1]
         
         assert abs(self.tw_pf[-1] - self.tw_sf[0]) < 1e-4
 
@@ -51,6 +51,7 @@ class PenaltyCalculator:
         result = PenaltyCalculator()
         result._problem = self._problem
         result._index = self._index.copy()
+        result.route = self.route.copy()
         result.a = self.a.copy()
         result.tw_pf = self.tw_pf.copy()
         result.z = self.z.copy()

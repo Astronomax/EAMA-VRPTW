@@ -22,28 +22,80 @@ def validate(routes):
 
 
 instances = [
-    "C1_10_1.TXT",
-    "C1_10_2.TXT",
-    "C1_10_3.TXT",
-    "C1_10_4.TXT",
+    #"C1_10_1.TXT",
+    #"C1_10_2.TXT",
+    #"C1_10_3.TXT",
+    #"C1_10_4.TXT",
     "C1_10_5.TXT",
     "C1_10_6.TXT",
     "C1_10_7.TXT",
     "C1_10_8.TXT",
     "C1_10_9.TXT",
-    "C1_10_10.TXT",  
+    "C1_10_10.TXT",
+    "C2_10_1.TXT",
+    "C2_10_2.TXT",
+    "C2_10_3.TXT",
+    "C2_10_4.TXT",
+    "C2_10_5.TXT",
+    "C2_10_6.TXT",
+    "C2_10_7.TXT",
+    "C2_10_8.TXT",
+    "C2_10_9.TXT",
+    "C2_10_10.TXT",
+    "R1_10_1.TXT",
+    "R1_10_2.TXT",
+    "R1_10_3.TXT",
+    "R1_10_4.TXT",
+    "R1_10_5.TXT",
+    "R1_10_6.TXT",
+    "R1_10_7.TXT",
+    "R1_10_8.TXT",
+    "R1_10_9.TXT",
+    "R1_10_10.TXT",
+    "R2_10_1.TXT",
+    "R2_10_2.TXT",
+    "R2_10_3.TXT",
+    "R2_10_4.TXT",
+    "R2_10_5.TXT",
+    "R2_10_6.TXT",
+    "R2_10_7.TXT",
+    "R2_10_8.TXT",
+    "R2_10_9.TXT",
+    "R2_10_10.TXT",
+    "RC1_10_1.TXT",
+    "RC1_10_2.TXT",
+    "RC1_10_3.TXT",
+    "RC1_10_4.TXT",
+    "RC1_10_5.TXT",
+    "RC1_10_6.TXT",
+    "RC1_10_7.TXT",
+    "RC1_10_8.TXT",
+    "RC1_10_9.TXT",
+    "RC1_10_10.TXT",
+    "RC2_10_1.TXT",
+    "RC2_10_2.TXT",
+    "RC2_10_3.TXT",
+    "RC2_10_4.TXT",
+    "RC2_10_5.TXT",
+    "RC2_10_6.TXT",
+    "RC2_10_7.TXT",
+    "RC2_10_8.TXT",
+    "RC2_10_9.TXT",
+    "RC2_10_10.TXT",
 ]
 
 for file_instance in instances:
     problem = SolomonFormatParser(f'{problem_dir}/{file_instance}').get_problem()  
     rmh_settings = RMHSettings()
     rmh_settings.i_rand = 1000
-    rmh_settings.t_max = 4 * 60
+    rmh_settings.t_max = 10 * 60
     gip_settings = GIPSettings()
     eama_settings = EAMASettings()
     eama = EAMA(problem, rmh_settings=rmh_settings, gip_settings=gip_settings, eama_settings=eama_settings, debug=False)
+    start_time = time.time()
     result = eama.powerful_route_minimization_heuristic(rmh_settings).get_solution()
     print(problem.name, len(result))
+    print(f'elapsed time: {time.time() - start_time}')
     with open(f"""{solution_dir}/{problem.name}.sol""", 'w') as f:
         f.write(problem.print_canonical(result))
 

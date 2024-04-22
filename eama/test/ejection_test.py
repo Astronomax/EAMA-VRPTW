@@ -1,11 +1,14 @@
 from eama.meta_wrapper import MetaWrapper
 from eama.ejection import Ejection, feasible_ejections
 from generators import generate_random_problem, generate_random_solution
-from random import choice, randint
+from random import choice, randint, seed
 
 import unittest
 from itertools import combinations
 from math import inf
+from copy import copy
+
+#seed(239)
 
 def subsets_lexicographic_order(nums, k):
     nums.sort()
@@ -23,7 +26,8 @@ def random_ejection_test_factory(num_tests=100):
             p = [randint(0, 5) for _ in range(len(problem.customers))]
             n = len(route)
             all_ejections = sorted(subsets_lexicographic_order(list(range(n)), 5))
-            ejections = list(feasible_ejections(route, p, 5))
+            ejections = [(copy(e), p_sum) for e, p_sum in feasible_ejections(route, p, 5)]
+            #print([([v.number for v in e[0]._ejection], e[1]) for e in ejections])
             j = 0
             p_best = inf
             for ejection_list in all_ejections:
@@ -35,6 +39,10 @@ def random_ejection_test_factory(num_tests=100):
                 if route_copy.feasible():
                     if p_sum < p_best:
                         self.assertLess(j, len(ejections))
+                        #if not all([x == y for x, y in zip(ejections[j][0]._ejection, ejection)]):
+                        #    print([node.value.number for node in route._route.head.iter()])
+                        #    for node in route._route.head.iter():
+                        #        print(node.value._customer)
                         self.assertListEqual(ejections[j][0]._ejection, ejection)
                         self.assertEqual(ejections[j][1], p_sum)
                         p_best = p_sum

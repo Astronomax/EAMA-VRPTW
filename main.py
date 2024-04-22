@@ -20,7 +20,7 @@ if __name__ == '__main__':
     problem = SolomonFormatParser(args.problem).get_problem()  
     start_time = time.time()
     rmh_settings = RMHSettings()
-    rmh_settings.i_rand = 100
+    rmh_settings.i_rand = 1000
     rmh_settings.t_max = 20 * 60
     rmh_settings.lower_bound = 90
     gip_settings = GIPSettings()

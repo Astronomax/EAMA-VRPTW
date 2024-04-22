@@ -10,6 +10,31 @@ from generators import generate_random_problem, generate_random_solution
 import unittest
 
 
+
+def random_exchanges_lower_bound_test_factory(num_tests=100):
+    def test_method(self):
+        cnt = 0
+        for _ in range(num_tests):
+            problem = generate_random_problem()
+            solution = generate_random_solution(problem)
+            route = choice(solution._routes)
+            v = choice(list(route._route.head.iter())).value
+            w = choice(list(route._route.head.iter())).value
+            type = ExchangeType.Exchange
+            e = ExchangeFast(v, w, type)
+            if e.appliable():
+                lower_bound, accurate = e.penalty_delta_lower_bound(1, 1)
+                delta = e.penalty_delta(1, 1)
+                #print(lower_bound, delta)
+                if accurate:
+                    cnt += 1
+                    self.assertAlmostEqual(lower_bound, delta, delta=1e-6)
+                else:
+                    self.assertLessEqual(lower_bound - 1e-6, delta)
+        #print(cnt, num_tests) #21 100
+ 
+    return test_method
+
 def random_exchanges_test_factory(num_tests=100):
     def test_method(self):
         for _ in range(num_tests):
@@ -168,6 +193,7 @@ class TestPenaltyCalculator(unittest.TestCase):
             self.assertEqual(pc.tw_sf[i], tw_sf)
             self.assertEqual(pc.demand_sf[i], demand_sf)
 
+    test_random_exchanges_lower_bound = random_exchanges_lower_bound_test_factory(100)
     test_random_exchanges = random_exchanges_test_factory(100)
     test_random_insertions = random_insertions_test_factory(100)
     test_random_ejections = random_ejections_test_factory(100)

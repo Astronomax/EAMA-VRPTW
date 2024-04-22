@@ -2,6 +2,7 @@ from eama.exchange import Exchange, ExchangeType
 from eama.meta_wrapper import MetaWrapper, RouteWrapper, CustomerWrapper
 from eama.structure import Problem, Customer
 from eama.routelist import RouteList
+from generators import generate_random_problem, generate_random_solution
 
 import unittest
 

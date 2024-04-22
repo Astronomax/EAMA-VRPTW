@@ -6,26 +6,26 @@ from eama.insertion import insertions
 
 from math import inf
 from itertools import combinations
+from copy import copy
 
 customers = [
-    Customer(0,     70,     70,     0,      0,      1351,   0),
-    Customer(21,    109,    131,    20,     72,     141,    90),
-    Customer(23,    115,    134,    30,     140,    199,    90),
-    Customer(8,     6,      135,    40,     351,    386,    90),
-    Customer(16,    36,     135,    10,     598,    669,    90),
-    Customer(7,     1,      109,    10,     616,    680,    90),
+    Customer(0,     92,     44,     0,      0,      72,   0),
+    Customer(16,    75,    37,    2,     50,     63,    3),
+    Customer(17,    4,    49,    2,     34,    48,    7),
+    Customer(18,     66,      94,    4,     46,    97,    7),
 ]
 problem = Problem("temp", customers, 1000, 200)
 solution = MetaWrapper(problem=problem, routes=[customers[1:]])
+'''
 route = solution._routes[0]
 v = route[0]
 route.eject(v, update=True)
 print([insertion._index.number for insertion in list(insertions(v, meta_wrapper=solution))])
-
 '''
+#'''
 route = solution._routes[0]
 p = list(range(25))
-ejections = [(e, p_sum) for e, p_sum in feasible_ejections(route, p, 5)]
+ejections = [(copy(e), p_sum) for e, p_sum in feasible_ejections(route, p, 5)]
 print([([v.number for v in e[0]._ejection], e[1]) for e in ejections])
 
 
@@ -64,4 +64,4 @@ for ejection_list in all_ejections:
             p_best_tmp = p_sum
             j += 1
     solution.activate()
-'''
+#'''
