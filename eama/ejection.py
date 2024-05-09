@@ -1,7 +1,7 @@
 from eama.meta_wrapper import MetaWrapper, RouteWrapper, CustomerWrapper
 from eama.modification import Modification
 from math import inf
-
+from bisect import bisect_left
 
 class Ejection(Modification):
     def __init__(self, meta_wrapper: MetaWrapper, ejection: list[CustomerWrapper], c_delta: float, tw_delta: float, dist_delta: float):
@@ -59,56 +59,81 @@ def feasible_ejections(route: 'RouteWrapper', p: list[int], k_max: int, p_best =
     a = [0] * n
     a_quote = [0] * n
     a_quote[0] = a[0] = meta_wrapper.problem.depot.e
-    q_quote = pc.demand_pf[-1]
-    total_demand = q_quote
     p_sum = 0
     dist_pf = [0] * n
     dist_pf[0] = 0
 
+
+    demand_pfsum = [0] * n
+    pickup_pfsum = [0] * n
+    demand_pfsum[0] = route[0].demand
+    pickup_pfsum[0] = max(0, -route[0].demand)
+
+
+    from sortedcontainers import SortedList
+    demand_pfsums = SortedList()
+    demand_pfsums.add(demand_pfsum[0])
+
+    c_tilde, x = 0, 0
+
+    def update_x():
+        nonlocal c_tilde, x
+        c_tilde = pickup_pfsum[not_ejected[-1]] + pc.pickup_sfsum[ejected[-1] + 1]
+        x = pc._problem.vehicle_capacity - c_tilde
+
+    update_x()
+
     def update(j):
-        nonlocal a, a_quote
+        nonlocal a, a_quote, dist_pf, demand_pfsum, pickup_pfsum
         for i in range(j, j + 2):
             v, w = route[not_ejected[-1]], route[i]
             dist_pf[i] = dist_pf[not_ejected[-1]] + v.c(w)
             a_quote[i] = a[not_ejected[-1]] + v.s + v.c(w)
             a[i] = min(max(a_quote[i], w.e), w.l)
+            demand_pfsum[i] = demand_pfsum[not_ejected[-1]] + w.demand
+            pickup_pfsum[i] = demand_pfsum[not_ejected[-1]] + max(0, -w.demand)
 
     def backtrack():
-        nonlocal p_sum, total_demand
+        nonlocal p_sum, demand_pfsums, c_tilde, x
         j = ejected.pop()
         ejection.pop()
         while not_ejected and not_ejected[-1] > ejected[-1]:
+            demand_pfsums.remove(demand_pfsum[not_ejected[-1]])
             not_ejected.pop()
         p_sum -= p[route[j].number]
-        total_demand += route[j].demand
+        update_x()
 
     def incr_k():
-        nonlocal p_sum, total_demand
+        nonlocal p_sum, c_tilde, x
         j = ejected[-1]
         ejected.append(j + 1)
         ejection.append(route[j + 1])
         p_sum += p[route[j + 1].number]
-        total_demand -= route[j + 1].demand
         update(ejected[-1])
+        update_x()
 
     def incr_last():
-        nonlocal p_sum, total_demand
+        nonlocal p_sum, demand_pfsums, c_tilde, x
         j = ejected[-1]
         ejected[-1] = j + 1
         ejection[-1] = route[j + 1]
         not_ejected.append(j)
+        demand_pfsums.add(demand_pfsum[j])
         p_sum -= p[route[j].number] - p[route[j + 1].number]
-        total_demand += route[j].demand - route[j + 1].demand
         update(ejected[-1])
+        update_x()
 
     update(ejected[-1])
     p_sum += p[route[ejected[-1]].number]
-    total_demand -= route[ejected[-1]].demand
 
     while True:
         j = ejected[-1] + 1
+        sorted_sfs = pc.sorted_sfs[j]
+        pfsum_pos = demand_pfsum[not_ejected[-1]]
+        lower_bound = bisect_left(sorted_sfs, x - pfsum_pos)
         if p_sum < p_best and a_quote[j] <= route[j].l and a[j] <= pc.z[j] and pc.tw_sf[j] == 0\
-            and total_demand <= meta_wrapper.problem.vehicle_capacity:
+            and lower_bound == len(sorted_sfs) and demand_pfsums.bisect_left(x) == len(demand_pfsums):
+
             dist_delta = dist_pf[j] + dc._dist_sf[j] - dist_before
             yield Ejection(meta_wrapper, ejection, c_delta, tw_delta, dist_delta), p_sum
             p_best = p_sum
@@ -128,43 +153,3 @@ def feasible_ejections(route: 'RouteWrapper', p: list[int], k_max: int, p_best =
                 backtrack()
                 prev = ejected[-1]
                 incr_last()
-            '''
-            while p_sum >= p_best or route[prev].l < a_quote[prev]:# or\
-                #(len(ejection) > 1 and a[prev] == pc.a[prev] and q_quote <= meta_wrapper.problem.vehicle_capacity):
-                if len(ejected) == 1:
-                    return
-                backtrack()
-                prev = ejected[-1]
-                incr_last()
-            '''
-
-'''
-def check_ejection_metadata_is_valid(route, p, k_max, ejection, a_quote, a, total_demand, p_sum):
-    assert len(ejection) <= k_max
-    j = ejection[-1] + 1
-    t_a_quote = route[0].e
-    t_a = route[0].e
-    last = 0
-    for i in range(1, j + 1):
-        if i in ejection:
-            continue
-        t_a_quote = t_a + route[last].s + route[last].c(route[i])
-        t_a = min(max(t_a_quote, route[i].e), route[i].l)
-        if t_a != a[i]:
-            return False
-        if t_a_quote != a_quote[i]:
-            return False
-        if i < j and t_a_quote > route[i].l:
-            return False
-        last = i
-    q_quote = route.demand_pf[-1]
-    total_demand_target = q_quote
-    for i in ejection:
-        total_demand_target -= route[i].demand
-    assert total_demand_target == total_demand
-    p_sum_target = 0
-    for i in ejection:
-        p_sum_target += p[route[i].number]
-    assert p_sum_target == p_sum
-    return True
-'''

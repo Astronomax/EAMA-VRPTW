@@ -149,7 +149,8 @@ class ExchangeFast(Modification):
     def appliable(self):
         return Exchange(self._v, self._w, self._type).appliable()
 
-    def penalty_delta_lower_bound(self, alpha, beta):
+    
+    def penalty_tw_delta_lower_bound(self):
         assert self.appliable()
         from eama.penalty_calculator import PenaltyCalculator
         if self._type == ExchangeType.Exchange and self._v.route() is self._w.route():
@@ -183,8 +184,8 @@ class ExchangeFast(Modification):
                             p_tw += max(0, a_quote - seg[i].l)   
                     if _a == pc.a[b_pos + 1]:
                         p_tw += pc.tw_pf[-1] - pc.tw_pf[b_pos + 1]
-                        return beta * (p_tw - route.get_penalty(0, 1)), True
-            return beta * (p_tw - route.get_penalty(0, 1)), False
+                        return (p_tw - route.get_penalty(0, 1)), True
+            return (p_tw - route.get_penalty(0, 1)), False
 
         if self._type == ExchangeType.TwoOpt:
             return PenaltyCalculator.two_opt_penalty_delta(self._v, self._w, alpha, beta)
@@ -193,6 +194,7 @@ class ExchangeFast(Modification):
         elif self._type == ExchangeType.Exchange:
             return PenaltyCalculator.exchange_penalty_delta(self._v, self._w, alpha, beta)
         assert False
+
 
     def penalty_delta(self, alpha, beta):
         assert self.appliable()

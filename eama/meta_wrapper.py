@@ -233,6 +233,11 @@ class MetaWrapper:
 
         for v in customers:
             v_route = v.route()
+            pc = v_route._pc
+            v_pos = pc._index[v]
+            # proposition 1
+            #if abs(pc.tw_pf[v_pos - 1] + pc.tw_sf[v_pos + 1] - pc.tw_pf[-1]) < 1e-5:
+            #    continue
 
             assert v_route is not None
 
@@ -254,7 +259,6 @@ class MetaWrapper:
                             delta_min = min(delta_min, e.penalty_delta(1, 1))
                             yield e
                 else: # intra-route exchange
-                    #if v is not w:
                     w_copy = cust_dict[w.number]
                     assert not w_copy.ejected()
                     # only Out-Relocate supported
@@ -274,29 +278,29 @@ class MetaWrapper:
                         delta_min = min(delta_min, e.penalty_delta(1, 1))
                         yield e
 
+                    '''
                     e = ExchangeFast(v, w.prev(), ExchangeType.Exchange)
                     if e.appliable():
-                        lower_bound, accurate = e.penalty_delta_lower_bound(0, 1)
+                        lower_bound, accurate = e.penalty_tw_delta_lower_bound()
                         if lower_bound < delta_min:
                             if accurate:
-                                #print("success")
                                 assert abs(lower_bound - e.penalty_delta(0, 1)) < 1e-4
                                 yield ExchangeSlow(v, w.prev(), ExchangeType.Exchange, 0, lower_bound, 0)
                             else:
                                 delta_min = min(delta_min, e.penalty_delta(1, 1))
-                                yield ExchangeFast(v, w.prev(), ExchangeType.Exchange)
+                                yield e
 
                     e = ExchangeFast(v, w.next(), ExchangeType.Exchange)
                     if e.appliable():
-                        lower_bound, accurate = e.penalty_delta_lower_bound(0, 1)
+                        lower_bound, accurate = e.penalty_tw_delta_lower_bound()
                         if lower_bound < delta_min:
                             if accurate:
-                                #print("success")
                                 assert abs(lower_bound - e.penalty_delta(0, 1)) < 1e-4
                                 yield ExchangeSlow(v, w.next(), ExchangeType.Exchange, 0, lower_bound, 0)
                             else:
                                 delta_min = min(delta_min, e.penalty_delta(1, 1))
                                 yield e
+                    '''
 
     # \mathcal{N}_near(v, \sigma)
     def N_random(self, v: CustomerWrapper = None, route: RouteWrapper = None):

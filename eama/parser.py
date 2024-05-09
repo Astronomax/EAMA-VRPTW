@@ -17,4 +17,9 @@ class SolomonFormatParser:
         customers = []
         for line in lines[9:]:
             customers.append(Customer(*list(map(int, line))))
+            
+        for i, c in enumerate(customers):
+            if i % 2 == 1:
+                c.demand *= -1
+
         return Problem(name, customers, vehicle_number, vehicle_capacity)

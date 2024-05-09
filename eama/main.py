@@ -82,21 +82,9 @@ class EAMA:
         return feasible, infeasible
 
     def _insert_feasible(self, meta_wrapper: MetaWrapper, v: CustomerWrapper, deadline: float = inf):
-        '''
-        for route in meta_wrapper._routes:
-            tail = None
-            for node in route._route.head.iter():
-                if node.tail():
-                    tail = node
-                assert node.value.route() is route
-            assert tail is not None
-            assert tail.value.number == 0
-            assert route._route.tail is tail
-        '''
         assert v.ejected()
         if self.debug:
             self._debug_print("started", Colors.RESET)
-            #print("'insert_feasible': started")
         assert meta_wrapper.feasible()
         assert meta_wrapper.valid(v)
         #'''
@@ -105,11 +93,9 @@ class EAMA:
             assert meta_wrapper.feasible()
             if self.debug:
                 self._debug_print("completed successfully", Colors.GREEN)
-                #print(Colors.GREEN + "'insert_feasible': completed successfully" + Colors.RESET)
             return True
         if self.debug:
             self._debug_print("failed", Colors.RED)
-            #print(Colors.RED + "'insert_feasible': failed" + Colors.RESET)
         return False
         #'''        
         '''
@@ -121,12 +107,10 @@ class EAMA:
             assert meta_wrapper.feasible()
             if self.debug:
                 self._debug_print("completed successfully", Colors.GREEN)
-                #print(Colors.GREEN + "'insert_feasible': completed successfully" + Colors.RESET)
             return True
         except IndexError:
             if self.debug:
                 self._debug_print("failed", Colors.RED)
-                #print(Colors.RED + "'insert_feasible': failed" + Colors.RESET)
             return False
         '''
 
@@ -135,26 +119,19 @@ class EAMA:
         assert meta_wrapper.valid(v)
         if self.debug:
             self._debug_print("started", Colors.RESET)
-            #print("'squeeze': started")
         meta_wrapper = meta_wrapper.inherit()
 
         # insert such that penalty is minimum
         insertions_list = list(insertions(v, meta_wrapper=meta_wrapper))
-        #print([(insertion.penalty_delta(state.alpha, state.beta), insertion._index.number) for insertion in insertions_list[:6]])
-        #print(len(insertions_list))
         insertion=min(insertions_list,\
             key=lambda e: e.penalty_delta(state.alpha, state.beta))
-        #route = insertion._index.route()
-        #print([node.value.number for node in route._route.head.iter()])
         insertion.apply()
-        #print([node.value.number for node in route._route.head.iter()])
         _, infeasible = self._split_by_feasibility(meta_wrapper)
         assert len(infeasible) > 0
 
         while len(infeasible) > 0:
             if self.debug:
                 self._debug_print(f"penalty_sum: {sum([r.get_penalty(state.alpha, state.beta) for r in infeasible])}", Colors.RESET)
-                #print(f"'squeeze': penalty_sum: {sum([r.get_penalty(state.alpha, state.beta) for r in infeasible])}")
             v_route = infeasible.pop(randint(0, len(infeasible) - 1))
             opt_exchange = None
             opt_exchange_delta = inf
@@ -175,7 +152,6 @@ class EAMA:
 
             if self.debug:
                 self._debug_print(f"opt exchange delta: {opt_exchange_delta}", Colors.RESET)
-                #print(f"'squeeze': opt exchange delta: {opt_exchange_delta}")
             if not opt_exchange or opt_exchange_delta > -1e-5:
                 #if meta_wrapper.get_penalty(1, -1) < 0: # p_c < p_tw
                 #    state.beta /= 0.99
@@ -183,56 +159,37 @@ class EAMA:
                 #    state.beta *= 0.99
                 if self.debug:
                     self._debug_print("failed", Colors.RED)
-                    #print(Colors.RED + "'squeeze': failed" + Colors.RESET)
                     self._debug_print(f"beta after correction: {state.beta}", Colors.RESET)
-                    #print(f"'squeeze': beta after correction: {state.beta}")
                 return False, None
-            #if opt_exchange._v.route() is opt_exchange._w.route():
-            #    print(opt_exchange._type)
             assert opt_exchange_delta == opt_exchange.penalty_delta(state.alpha, state.beta)
             if self.debug:
                 c_delta = opt_exchange.penalty_delta(1, 0)
                 tw_delta = opt_exchange.penalty_delta(0, 1)
                 c_before_exchange = meta_wrapper.get_penalty(1, 0)
                 tw_before_exchange = meta_wrapper.get_penalty(0, 1)
-            #print(opt_exchange._type)
-            '''
-            for route in v_route._meta_wrapper._routes:
-                assert route._route.tail.value.route() is route
-            '''
             opt_exchange.apply()
-            '''
-            for route in v_route._meta_wrapper._routes:
-                assert route._route.tail.value.route() is route
-            '''
             if self.debug:
                 assert abs(c_delta - (meta_wrapper.get_penalty(1, 0) - c_before_exchange)) < 1e-4
                 assert abs(tw_delta - (meta_wrapper.get_penalty(0, 1) - tw_before_exchange)) < 1e-4
             _, infeasible = self._split_by_feasibility(meta_wrapper)
         if self.debug:
             self._debug_print("completed successfully", Colors.GREEN)
-            #print(Colors.GREEN + "'squeeze': completed successfully" + Colors.RESET)
         assert meta_wrapper.feasible()
         assert meta_wrapper.valid()
-        '''
-        for route in v_route._meta_wrapper._routes:
-            assert route._route.tail.value.route() is route
-        '''
         return True, meta_wrapper
 
     def _insert_eject(self, meta_wrapper: MetaWrapper, v: CustomerWrapper, settings: RMHSettings, deadline: float = inf):
-        #print(v.number)
         assert meta_wrapper.feasible()
         assert meta_wrapper.valid(v)
         assert v.ejected()
         if self.debug:
             self._debug_print("started", Colors.RESET)
             self._debug_print(f"p[v_in] = {self.p[v.number] + 1}", Colors.RESET)
-            #print("'insert_eject': started")
+
         self.p[v.number] += 1
         opt_insertion_ejection = None
         p_best = inf
-        #for route in sample(meta_wrapper._routes, len(meta_wrapper._routes)):
+
         try:
             for ind, route in enumerate(meta_wrapper._routes):
                 assert v.ejected()
@@ -245,56 +202,9 @@ class EAMA:
                     assert not v.ejected()
                     assert not insertion._index.route().feasible()
 
-
-
-                    '''
-                    def subsets_lexicographic_order(nums, k):
-                        nums.sort()
-                        n = len(nums)
-                        for r in range(1, k + 1):
-                            for combo in combinations(nums, r):
-                                yield list(combo)
-
-
-
-                    solution = meta_wrapper
-                    n = len(route)
-                    all_ejections = sorted(subsets_lexicographic_order(list(range(n)), 5))
-                    ejections = list(feasible_ejections(route, self.p, 5, p_best))
-                    j = 0
-                    p_best_tmp = p_best
-                    for ejection_list in all_ejections:
-                        solution_copy = solution.inherit()
-                        route_copy = solution_copy._routes[ind]
-                        ejection = [route_copy[i] for i in ejection_list]
-                        Ejection(solution_copy, ejection, 0, 0, 0).apply()
-                        p_sum = sum([self.p[v.number] for v in ejection])
-                        if route_copy.feasible():
-                            if p_sum < p_best_tmp:
-                                if j == len(ejections):
-                                    for node in route._route.head.iter():
-                                        print(node.value._customer)
-                                    print(ejection_list)
-                                assert j < len(ejections)
-                                assert all([x == y for x, y in zip(ejections[j][0]._ejection, ejection)])
-                                assert ejections[j][1] == p_sum
-                                p_best_tmp = p_sum
-                                j += 1
-                        solution.activate()
-                    assert j == len(ejections)
-                    '''
-
-
-
-
                     for ejection, p_sum in feasible_ejections(route, self.p, settings.k_max, p_best):
-                        #print(p_sum, p_best)
                         assert p_sum <= p_best
-                        #print(p_sum)
-                        #if p_sum < p_best or len(ejection._ejection) < len(opt_insertion_ejection[1]._ejection):
                         opt_insertion_ejection = (insertion, copy(ejection))
-                            #if p_sum == 0 and len(ejection._ejection) == 1:
-                            #    raise BreakLoop
                         p_best = p_sum
                     route.eject(v, True)
                     assert v.ejected()
@@ -302,32 +212,27 @@ class EAMA:
             pass
         if self.debug:
             self._debug_print(f"opt insertion-ejection p_sum: {p_best}", Colors.RESET)
-            #print(f"'insert_eject': opt insertion-ejection p_sum: {p_best}")
         if opt_insertion_ejection == None:
             if self.debug:
                 self._debug_print("failed", Colors.RED)
-                #print(Colors.RED + "'insert_eject': failed" + Colors.RESET)
             return False
         insertion, ejection = opt_insertion_ejection
-        #print(len(ejection._ejection))
-        #print([w.number for w in ejection._ejection])
+
         route = insertion._index.route()
         insertion.apply()
         assert not route.feasible()
-        #ejection._ejection = sorted(ejection._ejection, key=lambda x: self.p[x.number])
+
         ejection.apply()
         assert route.feasible()
         assert meta_wrapper.feasible()
         if self.debug:
             self._debug_print("completed successfully", Colors.GREEN)
-            #print(Colors.GREEN + "'insert_eject': completed successfully" + Colors.RESET)
         return True 
 
     def _perturb(self, meta_wrapper: MetaWrapper, i_rand: int, n_near: int, deadline: float = inf):
         assert meta_wrapper.feasible()
         if self.debug:
             self._debug_print("started", Colors.RESET)
-            #print("'perturb': started")
         '''
         cnt = 0
         for _ in range(i_rand):
@@ -401,45 +306,15 @@ class EAMA:
         #'''
         if self.debug:
             self._debug_print("completed successfully", Colors.GREEN)
-            #print(Colors.GREEN + "'perturb': completed successfully" + Colors.RESET)
 
     def _delete_route(self, meta_wrapper: MetaWrapper, state: RMHState, settings: RMHSettings, deadline: float = inf):
         if self.debug:
             self._debug_print("started", Colors.RESET)
-            #print("'delete_route': started")
         assert meta_wrapper.feasible()
         assert meta_wrapper.valid()
-        '''
-        for route in meta_wrapper._routes:
-            assert route._route.tail.value.route() is route
-        '''
-        '''
-        for route in meta_wrapper._routes:
-            tail = None
-            for node in route._route.head.iter():
-                if node.tail():
-                    tail = node
-                assert node.value.route() is route
-            assert tail is not None
-            assert tail.value.number == 0
-            assert route._route.tail is tail
-        '''
+
         meta_wrapper = meta_wrapper.inherit()
-        '''
-        for route in meta_wrapper._routes:
-            assert route._route.tail.value.route() is route
-        '''
-        '''
-        for route in meta_wrapper._routes:
-            tail = None
-            for node in route._route.head.iter():
-                if node.tail():
-                    tail = node
-                assert node.value.route() is route
-            assert tail is not None
-            assert tail.value.number == 0
-            assert route._route.tail is tail
-        '''
+
         # eliminate_random_route
         i = randint(0, len(meta_wrapper._routes) - 1)
         ejected = list(meta_wrapper._routes.pop(i))
@@ -448,10 +323,7 @@ class EAMA:
         meta_wrapper._ejection_pool.extend(ejected)
         assert meta_wrapper.feasible()
         assert meta_wrapper.valid()
-        '''
-        for route in meta_wrapper._routes:
-            assert route._route.tail.value.route() is route
-        '''
+
         # trying to empty ejection_pool
         while len(meta_wrapper._ejection_pool) > 0:
             if time.time() > deadline:
@@ -460,39 +332,21 @@ class EAMA:
             assert meta_wrapper.valid()
             if self.debug:
                 self._debug_print(f"ejection_pool: {len(meta_wrapper._ejection_pool)}", Colors.RESET)
-                #print(f"'delete_route': ejection_pool: {len(meta_wrapper._ejection_pool)}")
             # remove v from EP with the LIFO strategy
             v = meta_wrapper._ejection_pool.pop()
             assert v.ejected()
-            '''
-            for route in meta_wrapper._routes:
-                assert route._route.tail.value.route() is route
-            '''
+
             if self._insert_feasible(meta_wrapper, v, deadline):
                 assert meta_wrapper.feasible()
                 assert meta_wrapper.valid()
-                '''
-                for route in meta_wrapper._routes:
-                    assert route._route.tail.value.route() is route
-                '''
                 continue
-
-            '''
-            for route in meta_wrapper._routes:
-                assert route._route.tail.value.route() is route
-            '''
 
             assert v in meta_wrapper.nearest
             ok, result = self._squeeze(meta_wrapper, v, state, settings, deadline)
             if ok:
                 assert result.feasible()
                 assert result.valid()
-
                 meta_wrapper = result
-                '''
-                for route in meta_wrapper._routes:
-                    assert route._route.tail.value.route() is route
-                '''
                 continue
             meta_wrapper.activate()
             v._index = None
@@ -502,24 +356,22 @@ class EAMA:
                 continue
             if self.debug:
                 self._debug_print("failed", Colors.RED)
-                #print(Colors.RED + "'delete_route': failed" + Colors.RESET)
             return False, None
         if self.debug:
             self._debug_print("completed successfully", Colors.GREEN)
-            #print(Colors.GREEN + "'delete_route': completed successfully" + Colors.RESET)
         return True, meta_wrapper
 
     # determine the minimum possible number of routes
     def powerful_route_minimization_heuristic(self, settings: RMHSettings):
         if self.debug:
             self._debug_print("started", Colors.RESET)
-            #print(Colors.PURPLE + f"'RM heuristic': started" + Colors.RESET)
         state = RMHState()
         # each client on his own route
         meta_wrapper = MetaWrapper(problem=self.problem)
-        straight_lower_bound = ceil(sum([c.demand for c in self.problem.customers]) / self.problem.vehicle_capacity)
-        lower_bound = max(settings.lower_bound, straight_lower_bound)
-
+        #straight_lower_bound = ceil(sum([c.demand for c in self.problem.customers]) / self.problem.vehicle_capacity)
+        #lower_bound = max(settings.lower_bound, straight_lower_bound)
+        lower_bound = settings.lower_bound
+                  
         deadline = time.time() + settings.t_max
         try:
             # try to reduce number of routes
@@ -530,7 +382,6 @@ class EAMA:
                 assert meta_wrapper.valid()
                 if self.debug:
                     self._debug_print(f"routes number: {len(meta_wrapper._routes)}", Colors.PURPLE)
-                    #print(Colors.PURPLE + f"'RM heuristic': routes number: {len(meta_wrapper._routes)}" + Colors.RESET)
                 ok, result = self._delete_route(meta_wrapper, state, settings, deadline)
                 if not ok:
                     meta_wrapper.activate()
@@ -540,13 +391,11 @@ class EAMA:
             meta_wrapper.activate()
         if self.debug:
             self._debug_print("completed successfully", Colors.GREEN)
-            #print(Colors.GREEN + "'RM heuristic': completed successfully" + Colors.RESET)
         return meta_wrapper
 
     def generate_initial_population(self):
         if self.debug:
             self._debug_print("started", Colors.RESET)
-            #print("'generate_initial_population': started")
         initial_population = [self.powerful_route_minimization_heuristic(self.rmh_settings)]
         rmh_settings = self.rmh_settings
         rmh_settings.t_max = inf
@@ -561,13 +410,10 @@ class EAMA:
         initial_population.extend([future.result() for future in futures if future.done()])
         if self.debug:
             self._debug_print(f"{len(initial_population)} solutions were generated honestly", Colors.RESET)
-            #print(f"'generate_initial_population': {len(initial_population)} solutions were generated honestly")
             self._debug_print(f"{n_pop - len(initial_population)} duplicates have been added", Colors.RESET)
-            #print(f"'generate_initial_population': {n_pop - len(initial_population)} duplicates have been added")
         initial_population.extend([copy(initial_population[-1]) for _ in range(n_pop - len(initial_population))])
         if self.debug:
             self._debug_print("completed successfully", Colors.GREEN)
-            #print(Colors.GREEN + "'generate_initial_population': completed successfully" + Colors.RESET)
         return initial_population
 
     # edge assembly crossover type

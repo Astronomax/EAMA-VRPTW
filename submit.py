@@ -22,10 +22,10 @@ def validate(routes):
 
 
 instances = [
-    #"C1_10_1.TXT",
-    #"C1_10_2.TXT",
-    #"C1_10_3.TXT",
-    #"C1_10_4.TXT",
+    "C1_10_1.TXT",
+    "C1_10_2.TXT",
+    "C1_10_3.TXT",
+    "C1_10_4.TXT",
     "C1_10_5.TXT",
     "C1_10_6.TXT",
     "C1_10_7.TXT",

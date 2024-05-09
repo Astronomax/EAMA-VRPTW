@@ -26,6 +26,11 @@ def check_route(problem, line):
     distance = 0
     for a, b in zip(customers[:-1], customers[1:]):
         distance += a.c(b)
+    c_tilde = sum([max(0, -c.demand) for c in customers])
+    pfsum = c_tilde
+    for c in customers:
+        pfsum += c.demand
+        assert(pfsum <= problem.vehicle_capacity)
     return distance
 
 

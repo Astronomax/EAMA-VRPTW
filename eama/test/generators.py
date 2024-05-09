@@ -6,7 +6,7 @@ from random import randint
 def generate_random_customer(number):
     x = randint(0, 100)
     y = randint(0, 100)
-    demand = randint(0, 10)
+    demand = randint(0, 10) - 5
     e = randint(0, 50)
     l = randint(e, 100)
     s = randint(0, 20)
